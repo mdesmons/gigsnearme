@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/dbschema.iml" filepath="$PROJECT_DIR$/dbschema.iml" />
+      <module fileurl="file://$PROJECT_DIR$/gigsnearme.iml" filepath="$PROJECT_DIR$/gigsnearme.iml" />
+      <module fileurl="file://$PROJECT_DIR$/moshtix.iml" filepath="$PROJECT_DIR$/moshtix.iml" />
+      <module fileurl="file://$PROJECT_DIR$/test.iml" filepath="$PROJECT_DIR$/test.iml" />
+    </modules>
+  </component>
+</project>
