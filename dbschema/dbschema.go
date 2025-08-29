@@ -6,8 +6,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"log"
 	"time"
 )
@@ -123,26 +123,6 @@ func WriteEvent(ctx context.Context, dc *dynamodb.Client, event Event) error {
 	return err
 }
 
-func SourceEventExists(ctx context.Context, dc *dynamodb.Client, source string, id string) (bool, error) {
-	keyEx := expression.Key("source").Equal(expression.Value(source)).And(
-		expression.Key("source_event_id").Equal(expression.Value(id)))
-	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
-	if err != nil {
-		log.Printf("Couldn't build expression for query. Here's why: %v\n", err)
-		return false, err
-	} else {
-		dc.Query(ctx, &dynamodb.QueryInput{TableName: aws.String("Events"),
-			KeyConditionExpression: expr
-		queryPaginator := dynamodb.NewQueryPaginator(dc, &dynamodb.QueryInput{
-			TableName:                 aws.String("Events"),
-			ExpressionAttributeNames:  expr.Names(),
-			ExpressionAttributeValues: expr.Values(),
-			KeyConditionExpression:    expr.KeyCondition(),
-		})
-		return queryPaginator.HasMorePages(), nil
-	}
-}
-
 func InitDb(endpointURL string, region string) (*dynamodb.Client, context.Context, error) {
 	ctx := context.Background()
 
@@ -165,4 +145,27 @@ func InitDb(endpointURL string, region string) (*dynamodb.Client, context.Contex
 	client := dynamodb.NewFromConfig(cfg)
 
 	return client, ctx, nil
+}
+
+// Query exactly one (or few) item(s) using both GSI keys: source AND source_event_id
+func QueryBySourceAndSourceEventID(ctx context.Context, ddb *dynamodb.Client, source, sourceEventID string) ([]Event, error) {
+	out, err := ddb.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String("Events"),
+		IndexName:              aws.String("SourceEvent"),
+		KeyConditionExpression: aws.String("source = :src AND source_event_id = :seid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":src":  &types.AttributeValueMemberS{Value: source},
+			":seid": &types.AttributeValueMemberS{Value: sourceEventID},
+		},
+		// ConsistentRead is not supported on GSIs; default (false) is fine
+		Limit: aws.Int32(10),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var items []Event
+	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

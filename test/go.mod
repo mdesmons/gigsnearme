@@ -7,6 +7,7 @@ replace github.com/moshtix => ../moshtix
 require (
 	github.com/dbschema v0.0.0-00010101000000-000000000000
 	github.com/moshtix v0.0.0-00010101000000-000000000000
+	github.com/pipeline v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -33,3 +34,5 @@ require (
 )
 
 replace github.com/dbschema => ../dbschema
+
+replace github.com/pipeline => ../pipeline

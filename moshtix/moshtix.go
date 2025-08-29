@@ -3,10 +3,10 @@ package moshtix
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/dbschema"
 	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
+	"github.com/pipeline"
 	"strconv"
 	"time"
 )
@@ -144,7 +144,7 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 	return result
 }
 
-func Scrape(dbContext context.Context, dbClient *dynamodb.Client) {
+func Scrape(pipeline pipeline.Pipeline) error {
 	var moshtixResponse = moshtixResponse{}
 
 	var pageIndex = 0
@@ -174,11 +174,9 @@ func Scrape(dbContext context.Context, dbClient *dynamodb.Client) {
 			// element is the element from someSlice for where we are
 
 			dbEvent := convertToDbEvent(element)
-			fmt.Println("Writing event " + dbEvent.EventID + " " + dbEvent.Title)
-			err := dbschema.WriteEvent(dbContext, dbClient, dbEvent)
+			_, err := pipeline.Process(dbEvent)
 			if err != nil {
 				fmt.Println(err.Error())
-				return
 			}
 		}
 
@@ -192,4 +190,5 @@ func Scrape(dbContext context.Context, dbClient *dynamodb.Client) {
 	}
 
 	fmt.Println(moshtixResponse.Viewer.GetEvents.TotalCount)
+	return nil
 }

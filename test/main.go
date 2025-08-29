@@ -4,6 +4,8 @@ import (
 	"flag"
 	"github.com/dbschema"
 	"github.com/moshtix"
+	"github.com/pipeline"
+	"log"
 )
 
 // TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
@@ -25,5 +27,9 @@ func main() {
 	flag.Parse()
 
 	var client, context, _ = dbschema.InitDb(endpointURL, region)
-	moshtix.Scrape(context, client)
+	pipeline := pipeline.NewPipeline(context, client)
+	err := moshtix.Scrape(pipeline)
+	if err != nil {
+		log.Printf(err.Error())
+	}
 }
