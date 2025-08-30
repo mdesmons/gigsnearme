@@ -97,7 +97,7 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 	}*/
 
 	var result = dbschema.Event{EventID: uuid.NewString(),
-		Source:      string(dbschema.Moshtix),
+		Source_name: string(dbschema.Moshtix),
 		SourceEvent: strconv.Itoa(item.Id),
 		Title:       item.Name,
 		Description: item.Description,

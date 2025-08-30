@@ -33,10 +33,11 @@ type Address struct {
 
 type Event struct {
 	EventID      string       `dynamodbav:"event_id"`        // UUID string
-	Source       string       `dynamodbav:"source"`          // GSI PK
+	Source_name  string       `dynamodbav:"source_name"`     // GSI PK
 	SourceEvent  string       `dynamodbav:"source_event_id"` // GSI SK
 	Title        string       `dynamodbav:"title"`
 	Description  string       `dynamodbav:"description"`
+	Caption      string       `dynamodbav:"caption"`
 	Start        time.Time    `dynamodbav:"start"` // stored as RFC3339 string
 	End          time.Time    `dynamodbav:"end"`   // stored as RFC3339 string
 	VenueName    string       `dynamodbav:"venue_name"`
@@ -49,6 +50,7 @@ type Event struct {
 	Images       []string     `dynamodbav:"images"`        // list of strings
 	Categories   []string     `dynamodbav:"categories"`    // list of strings
 	Tags         []string     `dynamodbav:"tags"`          // list of strings
+	ExtraTags    []string     `dynamodbav:"extra_tag"`     // list of strings
 	ContentFlags ContentFlags `dynamodbav:"content_flags"` // map of booleans
 	FetchedAt    time.Time    `dynamodbav:"fetched_at"`
 }
@@ -152,7 +154,7 @@ func QueryBySourceAndSourceEventID(ctx context.Context, ddb *dynamodb.Client, so
 	out, err := ddb.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String("Events"),
 		IndexName:              aws.String("SourceEvent"),
-		KeyConditionExpression: aws.String("source = :src AND source_event_id = :seid"),
+		KeyConditionExpression: aws.String("source_name = :src AND source_event_id = :seid"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":src":  &types.AttributeValueMemberS{Value: source},
 			":seid": &types.AttributeValueMemberS{Value: sourceEventID},
@@ -163,6 +165,31 @@ func QueryBySourceAndSourceEventID(ctx context.Context, ddb *dynamodb.Client, so
 	if err != nil {
 		return nil, err
 	}
+	var items []Event
+	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func QueryBySourceWithEmptyTag(ctx context.Context, ddb *dynamodb.Client, source string) ([]Event, error) {
+	out, err := ddb.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String("Events"),
+		IndexName:              aws.String("SourceEvent"),
+		KeyConditionExpression: aws.String("source_name = :src"),
+		FilterExpression:       aws.String("attribute_not_exists(tags) OR attribute_type(tags, :null) OR size(tags) = :zero"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":src":  &types.AttributeValueMemberS{Value: source},
+			":zero": &types.AttributeValueMemberN{Value: "0"},
+			":null": &types.AttributeValueMemberS{Value: "NULL"},
+		},
+		Limit: aws.Int32(100)})
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return nil, err
+	}
+
 	var items []Event
 	if err := attributevalue.UnmarshalListOfMaps(out.Items, &items); err != nil {
 		return nil, err

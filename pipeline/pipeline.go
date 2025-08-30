@@ -2,8 +2,12 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/dbschema"
+	"github.com/invopop/jsonschema"
+	"github.com/openai/openai-go/v2"
 	"log"
 )
 
@@ -22,18 +26,21 @@ func NewDeduplicator(dbContext context.Context, dbClient *dynamodb.Client) Dedup
 }
 
 func (d *Deduplicator) Deduplicate(event dbschema.Event) (dbschema.Event, error) {
-	// Implement deduplication logic here
-	// For example, check if an event with the same Source and SourceEvent already exists in the database
-	// If it exists, return an error or modify the event as needed
+	// Check if an event with the same Source_name and SourceEvent already exists in the database
+	// If it exists, return an error
 	// If it doesn't exist, return the event as is
-	_, err := dbschema.QueryBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source, event.SourceEvent)
-	// Placeholder implementation: return the event as is
+	events, err := dbschema.QueryBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source_name, event.SourceEvent)
+	if len(events) > 0 {
+		return event, fmt.Errorf("duplicate event found: %s - %s", event.Source_name, event.SourceEvent)
+	}
+	// return the event as is
 	return event, err
 }
 
 type Tagger struct {
-	dbContext context.Context
-	dbClient  *dynamodb.Client
+	dbContext    context.Context
+	dbClient     *dynamodb.Client
+	queuedEvents []dbschema.Event
 }
 
 func NewTagger(dbContext context.Context, dbClient *dynamodb.Client) Tagger {
@@ -43,12 +50,82 @@ func NewTagger(dbContext context.Context, dbClient *dynamodb.Client) Tagger {
 	}
 }
 
-func (t *Tagger) Tag(event dbschema.Event) (dbschema.Event, error) {
-	// Implement tagging logic here
-	// For example, add tags based on event categories or other attributes
+type PerEvent struct {
+	Index    int      `json:"index"`    // position in the input slice
+	Top5     []string `json:"top5"`     // exactly 5
+	Extended []string `json:"extended"` // up to 10
+	Caption  string   `json:"caption"`
+}
+type BatchOut struct {
+	Results []PerEvent `json:"results"`
+}
 
-	// Placeholder implementation: return the event as is
-	return event, nil
+func GenerateSchema[T any]() interface{} {
+	// Structured Outputs uses a subset of JSON schema
+	// These flags are necessary to comply with the subset
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
+	}
+	var v T
+	schema := reflector.Reflect(v)
+	return schema
+}
+
+var batchOutSchema = GenerateSchema[BatchOut]()
+
+func (t *Tagger) Tag(events []dbschema.Event) error {
+	eventDescriptions := make([]string, len(events))
+
+	for _, event := range events {
+		eventDescriptions = append(eventDescriptions, event.Description)
+	}
+	prompt := fmt.Sprintf(`You are a tagging assistant.
+Given an ordered list of event descriptions, produce results in the SAME order.
+For each event i:
+- "top5": exactly 5 hashtags, prioritised for reach+fit
+- "extended": up to 10 more hashtags
+- "caption": a punchy 1-liner using 2–3 top tags
+
+Return ONLY JSON that conforms to the provided schema.
+Input events (0-based indices):
+%v
+`, eventDescriptions)
+
+	ctx := context.Background()
+	client := openai.NewClient()
+
+	schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
+		Name:        "BatchHashtagResponse",
+		Description: openai.String("Schema for batch hashtagging response"),
+		Strict:      openai.Bool(true),
+		Schema:      batchOutSchema,
+	}
+	chat, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{JSONSchema: schemaParam},
+		},
+		// Only certain models can perform structured outputs
+		Model: openai.ChatModelGPT4oMini,
+	})
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// The model responds with a JSON string, so parse it into a struct
+	var batchOut BatchOut
+	err = json.Unmarshal([]byte(chat.Choices[0].Message.Content), &batchOut)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Println(batchOut.Results)
+
+	return nil
 }
 
 type Saver struct {
@@ -73,14 +150,12 @@ func (s *Saver) Save(event dbschema.Event) (dbschema.Event, error) {
 
 type Pipeline struct {
 	deduplicator Deduplicator
-	tagger       Tagger
 	saver        Saver
 }
 
 func NewPipeline(dbContext context.Context, dbClient *dynamodb.Client) Pipeline {
 	return Pipeline{
 		deduplicator: NewDeduplicator(dbContext, dbClient),
-		tagger:       NewTagger(dbContext, dbClient),
 		saver:        NewSaver(dbContext, dbClient),
 	}
 }
@@ -89,12 +164,6 @@ func (p *Pipeline) Process(event dbschema.Event) (dbschema.Event, error) {
 	event, err := p.deduplicator.Deduplicate(event)
 	if err != nil {
 		log.Printf("Deduplication: %s", err.Error())
-		return event, err
-	}
-
-	event, err = p.tagger.Tag(event)
-	if err != nil {
-		log.Printf("Tagging: %s", err.Error())
 		return event, err
 	}
 

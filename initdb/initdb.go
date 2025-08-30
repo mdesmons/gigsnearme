@@ -104,7 +104,7 @@ func createEventsTable(ctx context.Context, dc *dynamodb.Client) error {
 		TableName: aws.String(tableName),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("event_id"), AttributeType: types.ScalarAttributeTypeS},
-			{AttributeName: aws.String("source"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("source_name"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("source_event_id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("start"), AttributeType: types.ScalarAttributeTypeS},
 		},
@@ -115,7 +115,7 @@ func createEventsTable(ctx context.Context, dc *dynamodb.Client) error {
 			{
 				IndexName: aws.String(gsiSourceEvent),
 				KeySchema: []types.KeySchemaElement{
-					{AttributeName: aws.String("source"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("source_name"), KeyType: types.KeyTypeHash},
 					{AttributeName: aws.String("source_event_id"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
@@ -290,7 +290,7 @@ func putSampleItem(ctx context.Context, dc *dynamodb.Client) error {
 	now := time.Now().UTC()
 	ev := dbschema.Event{
 		EventID:     uuid.NewString(),
-		Source:      "example_source",
+		Source_name: "example_source",
 		SourceEvent: "SRC-123456",
 		Title:       "Sample Event",
 		Description: "A demo event showing all fields.",
