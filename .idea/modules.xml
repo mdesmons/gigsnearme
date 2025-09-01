@@ -4,10 +4,12 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/dbschema.iml" filepath="$PROJECT_DIR$/dbschema.iml" />
       <module fileurl="file://$PROJECT_DIR$/gigsnearme.iml" filepath="$PROJECT_DIR$/gigsnearme.iml" />
+      <module fileurl="file://$PROJECT_DIR$/matcher.iml" filepath="$PROJECT_DIR$/matcher.iml" />
       <module fileurl="file://$PROJECT_DIR$/moshtix.iml" filepath="$PROJECT_DIR$/moshtix.iml" />
       <module fileurl="file://$PROJECT_DIR$/pipeline.iml" filepath="$PROJECT_DIR$/pipeline.iml" />
       <module fileurl="file://$PROJECT_DIR$/tagger.iml" filepath="$PROJECT_DIR$/tagger.iml" />
       <module fileurl="file://$PROJECT_DIR$/test.iml" filepath="$PROJECT_DIR$/test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/testMatcher.iml" filepath="$PROJECT_DIR$/testMatcher.iml" />
     </modules>
   </component>
 </project>

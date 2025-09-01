@@ -101,8 +101,8 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 		SourceEvent: strconv.Itoa(item.Id),
 		Title:       item.Name,
 		Description: item.Description,
-		Start:       item.StartDate,
-		End:         item.EndDate,
+		Start:       item.StartDate.UTC(),
+		End:         item.EndDate.UTC(),
 		VenueName:   item.Venue.Name,
 		URL:         item.EventUrl,
 		FetchedAt:   time.Now(),
@@ -111,10 +111,6 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 	if len(item.TicketTypes.Items) > 0 {
 		result.PriceMin = item.TicketTypes.Items[0].TicketPrice
 		result.PriceMax = item.TicketTypes.Items[len(item.TicketTypes.Items)-1].TicketPrice
-	}
-
-	for _, tag := range item.Tags.Items {
-		result.Tags = append(result.Tags, tag.Name)
 	}
 
 	for _, imageUrl := range item.Images.Items {
@@ -145,20 +141,24 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 }
 
 func Scrape(pipeline pipeline.Pipeline) error {
-	var moshtixResponse = moshtixResponse{}
 
 	var pageIndex = 0
+	var pageSize = 100
+	var startFrom = time.Now().Format(time.RFC3339)
+	var eventsFetched = 0
+	var eventsProcessed = 0
 
 	for {
+		var moshtixResponse = moshtixResponse{}
 		fmt.Println("Getting page", pageIndex)
 
 		// Variables
 		vars := map[string]any{
 			"pageIndex":          graphql.Int(pageIndex),
-			"pageSize":           IntBetween1and200(100),
+			"pageSize":           IntBetween1and200(pageSize),
 			"sortBy":             EventSortOptionsInput("STARTDATE"),
 			"sortByDirection":    SortByDirectionInput("ASC"),
-			"eventStartDateFrom": Date("2025-08-25T00:00:00.000+10:00"),
+			"eventStartDateFrom": Date(startFrom),
 			"location":           EventLocationInput{Latitude: -33.8727, Longitude: 151.2057, WithinRadius: 10000},
 			"region":             []RegionInput{RegionInput("NSW")},
 		}
@@ -170,6 +170,8 @@ func Scrape(pipeline pipeline.Pipeline) error {
 			// Handle error.
 		}
 
+		eventsFetched += len(moshtixResponse.Viewer.GetEvents.Items)
+
 		for _, element := range moshtixResponse.Viewer.GetEvents.Items {
 			// element is the element from someSlice for where we are
 
@@ -177,6 +179,8 @@ func Scrape(pipeline pipeline.Pipeline) error {
 			_, err := pipeline.Process(dbEvent)
 			if err != nil {
 				fmt.Println(err.Error())
+			} else {
+				eventsProcessed++
 			}
 		}
 
@@ -186,9 +190,9 @@ func Scrape(pipeline pipeline.Pipeline) error {
 			break
 		}
 
-		time.Sleep(3 * time.Second)
+		//	time.Sleep(3 * time.Second)
 	}
 
-	fmt.Println(moshtixResponse.Viewer.GetEvents.TotalCount)
+	fmt.Println("Fetched ", eventsFetched, " events, successfully processed ", eventsProcessed, " events")
 	return nil
 }

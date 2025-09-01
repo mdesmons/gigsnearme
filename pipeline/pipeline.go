@@ -29,7 +29,7 @@ func (d *Deduplicator) Deduplicate(event dbschema.Event) (dbschema.Event, error)
 	// Check if an event with the same Source_name and SourceEvent already exists in the database
 	// If it exists, return an error
 	// If it doesn't exist, return the event as is
-	events, err := dbschema.QueryBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source_name, event.SourceEvent)
+	events, err := dbschema.QueryEventsBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source_name, event.SourceEvent)
 	if len(events) > 0 {
 		return event, fmt.Errorf("duplicate event found: %s - %s", event.Source_name, event.SourceEvent)
 	}
@@ -38,9 +38,8 @@ func (d *Deduplicator) Deduplicate(event dbschema.Event) (dbschema.Event, error)
 }
 
 type Tagger struct {
-	dbContext    context.Context
-	dbClient     *dynamodb.Client
-	queuedEvents []dbschema.Event
+	dbContext context.Context
+	dbClient  *dynamodb.Client
 }
 
 func NewTagger(dbContext context.Context, dbClient *dynamodb.Client) Tagger {
@@ -51,10 +50,11 @@ func NewTagger(dbContext context.Context, dbClient *dynamodb.Client) Tagger {
 }
 
 type PerEvent struct {
-	Index    int      `json:"index"`    // position in the input slice
-	Top5     []string `json:"top5"`     // exactly 5
-	Extended []string `json:"extended"` // up to 10
-	Caption  string   `json:"caption"`
+	Index      int      `json:"index"`    // position in the input slice
+	Top5       []string `json:"top5"`     // exactly 5
+	Extended   []string `json:"extended"` // up to 10
+	Caption    string   `json:"caption"`
+	Categories []string `json:"categories"`
 }
 type BatchOut struct {
 	Results []PerEvent `json:"results"`
@@ -86,6 +86,7 @@ For each event i:
 - "top5": exactly 5 hashtags, prioritised for reach+fit
 - "extended": up to 10 more hashtags
 - "caption": a punchy 1-liner using 2–3 top tags
+- "categories": up to 3 categories from the set {music, culture, sex-positive, workshop, talk, other}
 
 Return ONLY JSON that conforms to the provided schema.
 Input events (0-based indices):
@@ -123,7 +124,25 @@ Input events (0-based indices):
 		panic(err.Error())
 	}
 
-	fmt.Println(batchOut.Results)
+	for _, result := range batchOut.Results {
+		if result.Index >= len(events) {
+			log.Printf("Skipping out-of-bounds result (event index %d)", result.Index)
+			continue
+		}
+
+		event := events[result.Index]
+		event.Tags = result.Top5
+		event.ExtraTags = result.Extended
+		event.Caption = result.Caption
+		event.Categories = result.Categories
+
+		_, err := dbschema.UpdateEventTags(t.dbContext, t.dbClient, event)
+		if err != nil {
+			log.Printf("Error writing tagged event %s - %s: %s", event.Source_name, event.SourceEvent, err.Error())
+		} else {
+			log.Printf("Tagged event %s - %s with %d tags", event.Source_name, event.SourceEvent, len(event.Tags))
+		}
+	}
 
 	return nil
 }

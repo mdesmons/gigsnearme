@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/dbschema"
@@ -107,6 +106,7 @@ func createEventsTable(ctx context.Context, dc *dynamodb.Client) error {
 			{AttributeName: aws.String("source_name"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("source_event_id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("start"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("start_bucket"), AttributeType: types.ScalarAttributeTypeS},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{AttributeName: aws.String("event_id"), KeyType: types.KeyTypeHash},
@@ -121,9 +121,10 @@ func createEventsTable(ctx context.Context, dc *dynamodb.Client) error {
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
 			},
 			{
-				IndexName: aws.String(gsiStartTime),
+				IndexName: aws.String("StartBucketIndex"),
 				KeySchema: []types.KeySchemaElement{
-					{AttributeName: aws.String("start"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("start_bucket"), KeyType: types.KeyTypeHash}, // PK
+					{AttributeName: aws.String("start"), KeyType: types.KeyTypeRange},       // SK
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
 			},
@@ -312,15 +313,6 @@ func putSampleItem(ctx context.Context, dc *dynamodb.Client) error {
 		},
 		FetchedAt: now,
 	}
-
-	av, err := attributevalue.MarshalMap(ev)
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-
-	_, err = dc.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("Events"),
-		Item:      av,
-	})
+	err := dbschema.WriteEvent(ctx, dc, ev)
 	return err
 }

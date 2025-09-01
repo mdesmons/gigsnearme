@@ -25,11 +25,11 @@ func main() {
 	var client, context, _ = dbschema.InitDb(endpointURL, region)
 	tagger := pipeline.NewTagger(context, client)
 
-	events, err := dbschema.QueryBySourceWithEmptyTag(context, client, "moshtix")
+	events, err := dbschema.QueryUntaggedEvents(context, client, "moshtix")
 	fmt.Printf("Found %d untagged events\n", len(events))
 	if err == nil {
 		slices := len(events) / 10
-		for i := 0; i < slices; i++ {
+		for i := 0; i <= slices; i++ {
 			start := i * 10
 			end := start + 10
 			if end > len(events) {
