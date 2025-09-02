@@ -1,4 +1,4 @@
-package matcher
+package pipeline
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/dbschema"
-	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v2"
 )
 
@@ -40,22 +39,11 @@ type MatchingResultOut struct {
 	Results []MatchingResult `json:"results"`
 }
 
-func GenerateSchema[T any]() interface{} {
-	// Structured Outputs uses a subset of JSON schema
-	// These flags are necessary to comply with the subset
-	reflector := jsonschema.Reflector{
-		AllowAdditionalProperties: false,
-		DoNotReference:            true,
-	}
-	var v T
-	schema := reflector.Reflect(v)
-	return schema
-}
-
 var matchingResultOutSchema = GenerateSchema[MatchingResultOut]()
 
-func (t *Matcher) Match(events []dbschema.Event, desire string, venues []string) ([]MatchingResult, error) {
+func (t *Matcher) Match(events []dbschema.Event, desire string, venues []string) ([]dbschema.Event, error) {
 	eventFeatures := make([]MatchingFeatures, len(events))
+	eventsById := make(map[string]dbschema.Event)
 
 	for _, event := range events {
 		eventFeatures = append(eventFeatures, MatchingFeatures{
@@ -65,6 +53,8 @@ func (t *Matcher) Match(events []dbschema.Event, desire string, venues []string)
 			ExtraTags:  event.ExtraTags,
 			VenueName:  event.VenueName,
 		})
+		// Create a map of events by ID for easy lookup later
+		eventsById[event.EventID] = event
 	}
 
 	prompt := fmt.Sprintf(`You are a matching assistant.
@@ -114,5 +104,17 @@ User preferred venues: %v
 		panic(err.Error())
 	}
 
-	return matchingResultOut.Results, nil
+	var output = make([]dbschema.Event, len(matchingResultOut.Results))
+	for index, matchingResultTemp := range matchingResultOut.Results {
+		fmt.Printf("EventId=%s Score=%.2f Explanation=%s\n",
+			matchingResultTemp.EventId, matchingResultTemp.Score, matchingResultTemp.Explanation)
+
+		if recommendedEvent, ok := eventsById[matchingResultTemp.EventId]; ok {
+			output[index] = recommendedEvent
+		} else {
+			fmt.Printf("Skipping unknown EventId %s\n", matchingResultTemp.EventId)
+		}
+	}
+
+	return output, nil
 }

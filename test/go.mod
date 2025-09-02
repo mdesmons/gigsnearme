@@ -2,13 +2,8 @@ module test
 
 go 1.25.0
 
-replace github.com/moshtix => ../moshtix
 
-require (
-	github.com/dbschema v0.0.0-00010101000000-000000000000
-	github.com/moshtix v0.0.0-00010101000000-000000000000
-	github.com/pipeline v0.0.0-00010101000000-000000000000
-)
+require github.com/service v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.38.2 // indirect
@@ -31,11 +26,14 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/coder/websocket v1.8.13 // indirect
+	github.com/dbschema v0.0.0-00010101000000-000000000000 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hasura/go-graphql-client v0.14.4 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/moshtix v0.0.0-00010101000000-000000000000 // indirect
 	github.com/openai/openai-go/v2 v2.1.1 // indirect
+	github.com/pipeline v0.0.0-00010101000000-000000000000 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -45,5 +43,8 @@ require (
 )
 
 replace github.com/dbschema => ../dbschema
+replace github.com/moshtix => ../moshtix
 
 replace github.com/pipeline => ../pipeline
+
+replace github.com/service => ../service

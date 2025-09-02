@@ -1,13 +1,18 @@
-module tagger
+module service
 
 go 1.25.0
 
+replace github.com/dbschema => ../dbschema
+
 replace github.com/pipeline => ../pipeline
 
-replace github.com/dbschema => ../dbschema
+replace github.com/matcher => ../matcher
+
+replace github.com/moshtix => ../moshtix
 
 require (
 	github.com/dbschema v0.0.0-00010101000000-000000000000
+	github.com/moshtix v0.0.0-00010101000000-000000000000
 	github.com/pipeline v0.0.0-00010101000000-000000000000
 )
 
@@ -31,6 +36,9 @@ require (
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/coder/websocket v1.8.13 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/hasura/go-graphql-client v0.14.4 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/openai/openai-go/v2 v2.1.1 // indirect
