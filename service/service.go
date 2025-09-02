@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/dbschema"
-	"github.com/moshtix"
-	"github.com/pipeline"
+	"github.com/backend"
 	"log"
 	"time"
 )
@@ -16,22 +14,22 @@ import (
 type Service struct {
 	dbClient  *dynamodb.Client
 	dbContext context.Context
-	pipeline  pipeline.Pipeline
-	matcher   pipeline.Matcher
+	pipeline  backend.Pipeline
+	matcher   backend.Matcher
 }
 
 func NewService(dynamoURL string, region string) *Service {
-	var dbClient, dbContext, _ = dbschema.InitDb(dynamoURL, region)
+	var dbClient, dbContext, _ = backend.InitDb(dynamoURL, region)
 	return &Service{
 		dbClient:  dbClient,
 		dbContext: dbContext,
-		pipeline:  pipeline.NewPipeline(dbContext, dbClient),
-		matcher:   pipeline.NewMatcher(dbContext, dbClient),
+		pipeline:  backend.NewPipeline(dbContext, dbClient),
+		matcher:   backend.NewMatcher(dbContext, dbClient),
 	}
 }
 
 func (s *Service) LoadEvents() error {
-	err := moshtix.Scrape(s.pipeline)
+	err := backend.Scrape(s.pipeline)
 	if err != nil {
 		log.Printf(err.Error())
 	}
@@ -39,9 +37,9 @@ func (s *Service) LoadEvents() error {
 }
 
 func (s *Service) TagEvents() error {
-	tagger := pipeline.NewTagger(s.dbContext, s.dbClient)
+	tagger := backend.NewTagger(s.dbContext, s.dbClient)
 
-	events, err := dbschema.QueryUntaggedEvents(s.dbContext, s.dbClient, "moshtix")
+	events, err := backend.QueryUntaggedEvents(s.dbContext, s.dbClient, "moshtix")
 	log.Printf("Found %d untagged events\n", len(events))
 	if err == nil {
 		slices := len(events) / 10
@@ -66,9 +64,9 @@ func (s *Service) MatchEvents(dateFrom time.Time,
 	dateTo time.Time,
 	category string,
 	searchString string,
-	venues []string) ([]dbschema.Event, error) {
+	venues []string) ([]backend.Event, error) {
 
-	events, err := dbschema.QueryEventsByCategoryAndDate(s.dbContext, s.dbClient,
+	events, err := backend.QueryEventsByCategoryAndDate(s.dbContext, s.dbClient,
 		dateFrom, dateTo, category)
 
 	if err != nil {

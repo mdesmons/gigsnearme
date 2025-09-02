@@ -1,12 +1,10 @@
-package moshtix
+package backend
 
 import (
 	"context"
 	"fmt"
-	"github.com/dbschema"
 	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
-	"github.com/pipeline"
 	"strconv"
 	"time"
 )
@@ -90,14 +88,14 @@ type moshtixResponse struct {
 	}
 }
 
-func convertToDbEvent(item moshtixItem) dbschema.Event {
+func convertToDbEvent(item moshtixItem) Event {
 	//tags := make([]string, 0, len(item.Tags.Items))
 	/*for _, tag := range item.Tags.Items {
 		tags = append(tags, tag.Name)
 	}*/
 
-	var result = dbschema.Event{EventID: uuid.NewString(),
-		Source_name: string(dbschema.Moshtix),
+	var result = Event{EventID: uuid.NewString(),
+		Source_name: string(Moshtix),
 		SourceEvent: strconv.Itoa(item.Id),
 		Title:       item.Name,
 		Description: item.Description,
@@ -120,7 +118,7 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 	result.ContentFlags.EighteenPlus = (item.AgeRestriction == "OVER18")
 
 	if item.Venue.Address != nil {
-		result.Address = dbschema.Address{
+		result.Address = Address{
 			Line1:    item.Venue.Address.Line1,
 			Line2:    item.Venue.Address.Line2,
 			PostCode: item.Venue.Address.PostCode,
@@ -131,7 +129,7 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 	}
 
 	if item.Venue.Location != nil {
-		result.Geo = dbschema.Geo{
+		result.Geo = Geo{
 			Lat: item.Venue.Location.Latitude,
 			Lng: item.Venue.Location.Longitude,
 		}
@@ -140,7 +138,7 @@ func convertToDbEvent(item moshtixItem) dbschema.Event {
 	return result
 }
 
-func Scrape(pipeline pipeline.Pipeline) error {
+func Scrape(pipeline Pipeline) error {
 
 	var pageIndex = 0
 	var pageSize = 100

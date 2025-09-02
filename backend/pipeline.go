@@ -1,17 +1,14 @@
-package pipeline
+package backend
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/dbschema"
 	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v2"
 	"log"
 )
-
-type Operation func(event dbschema.Event) (dbschema.Event, error)
 
 type Deduplicator struct {
 	dbContext context.Context
@@ -25,11 +22,11 @@ func NewDeduplicator(dbContext context.Context, dbClient *dynamodb.Client) Dedup
 	}
 }
 
-func (d *Deduplicator) Deduplicate(event dbschema.Event) (dbschema.Event, error) {
+func (d *Deduplicator) Deduplicate(event Event) (Event, error) {
 	// Check if an event with the same Source_name and SourceEvent already exists in the database
 	// If it exists, return an error
 	// If it doesn't exist, return the event as is
-	events, err := dbschema.QueryEventsBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source_name, event.SourceEvent)
+	events, err := QueryEventsBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source_name, event.SourceEvent)
 	if len(events) > 0 {
 		return event, fmt.Errorf("duplicate event found: %s - %s", event.Source_name, event.SourceEvent)
 	}
@@ -74,7 +71,7 @@ func GenerateSchema[T any]() interface{} {
 
 var batchOutSchema = GenerateSchema[BatchOut]()
 
-func (t *Tagger) Tag(events []dbschema.Event) error {
+func (t *Tagger) Tag(events []Event) error {
 	eventDescriptions := make([]string, len(events))
 
 	for _, event := range events {
@@ -136,7 +133,7 @@ Input events (0-based indices):
 		event.Caption = result.Caption
 		event.Categories = result.Categories
 
-		_, err := dbschema.UpdateEventTags(t.dbContext, t.dbClient, event)
+		_, err := UpdateEventTags(t.dbContext, t.dbClient, event)
 		if err != nil {
 			log.Printf("Error writing tagged event %s - %s: %s", event.Source_name, event.SourceEvent, err.Error())
 		} else {
@@ -159,8 +156,8 @@ func NewSaver(dbContext context.Context, dbClient *dynamodb.Client) Saver {
 	}
 }
 
-func (s *Saver) Save(event dbschema.Event) (dbschema.Event, error) {
-	err := dbschema.WriteEvent(s.dbContext, s.dbClient, event)
+func (s *Saver) Save(event Event) (Event, error) {
+	err := WriteEvent(s.dbContext, s.dbClient, event)
 	if err != nil {
 		return event, err
 	}
@@ -179,7 +176,7 @@ func NewPipeline(dbContext context.Context, dbClient *dynamodb.Client) Pipeline 
 	}
 }
 
-func (p *Pipeline) Process(event dbschema.Event) (dbschema.Event, error) {
+func (p *Pipeline) Process(event Event) (Event, error) {
 	event, err := p.deduplicator.Deduplicate(event)
 	if err != nil {
 		log.Printf("Deduplication: %s", err.Error())

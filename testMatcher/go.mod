@@ -22,17 +22,15 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.34.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.1 // indirect
 	github.com/aws/smithy-go v1.23.0 // indirect
+	github.com/backend v0.0.0-00010101000000-000000000000 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/coder/websocket v1.8.13 // indirect
-	github.com/dbschema v0.0.0-00010101000000-000000000000 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hasura/go-graphql-client v0.14.4 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/moshtix v0.0.0-00010101000000-000000000000 // indirect
 	github.com/openai/openai-go/v2 v2.1.1 // indirect
-	github.com/pipeline v0.0.0-00010101000000-000000000000 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -41,10 +39,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/dbschema => ../dbschema
-
-replace github.com/moshtix => ../moshtix
-
-replace github.com/pipeline => ../pipeline
+replace github.com/backend => ../backend
 
 replace github.com/service => ../service

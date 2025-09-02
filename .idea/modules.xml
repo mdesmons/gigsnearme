@@ -2,10 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/dbschema.iml" filepath="$PROJECT_DIR$/dbschema.iml" />
+      <module fileurl="file://$PROJECT_DIR$/backend.iml" filepath="$PROJECT_DIR$/backend.iml" />
       <module fileurl="file://$PROJECT_DIR$/gigsnearme.iml" filepath="$PROJECT_DIR$/gigsnearme.iml" />
-      <module fileurl="file://$PROJECT_DIR$/moshtix.iml" filepath="$PROJECT_DIR$/moshtix.iml" />
-      <module fileurl="file://$PROJECT_DIR$/pipeline.iml" filepath="$PROJECT_DIR$/pipeline.iml" />
       <module fileurl="file://$PROJECT_DIR$/service.iml" filepath="$PROJECT_DIR$/service.iml" />
       <module fileurl="file://$PROJECT_DIR$/test.iml" filepath="$PROJECT_DIR$/test.iml" />
       <module fileurl="file://$PROJECT_DIR$/testMatcher.iml" filepath="$PROJECT_DIR$/testMatcher.iml" />

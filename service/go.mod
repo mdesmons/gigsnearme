@@ -2,18 +2,11 @@ module service
 
 go 1.25.0
 
-replace github.com/dbschema => ../dbschema
-
-replace github.com/pipeline => ../pipeline
-
-replace github.com/matcher => ../matcher
-
-replace github.com/moshtix => ../moshtix
+replace github.com/backend => ../backend
 
 require (
-	github.com/dbschema v0.0.0-00010101000000-000000000000
-	github.com/moshtix v0.0.0-00010101000000-000000000000
-	github.com/pipeline v0.0.0-00010101000000-000000000000
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.49.2
+	github.com/backend v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -25,7 +18,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.5 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.5 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.49.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.30.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.5 // indirect

@@ -1,11 +1,10 @@
-package pipeline
+package backend
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/dbschema"
 	"github.com/openai/openai-go/v2"
 )
 
@@ -41,9 +40,9 @@ type MatchingResultOut struct {
 
 var matchingResultOutSchema = GenerateSchema[MatchingResultOut]()
 
-func (t *Matcher) Match(events []dbschema.Event, desire string, venues []string) ([]dbschema.Event, error) {
+func (t *Matcher) Match(events []Event, desire string, venues []string) ([]Event, error) {
 	eventFeatures := make([]MatchingFeatures, len(events))
-	eventsById := make(map[string]dbschema.Event)
+	eventsById := make(map[string]Event)
 
 	for _, event := range events {
 		eventFeatures = append(eventFeatures, MatchingFeatures{
@@ -104,7 +103,7 @@ User preferred venues: %v
 		panic(err.Error())
 	}
 
-	var output = make([]dbschema.Event, len(matchingResultOut.Results))
+	var output = make([]Event, len(matchingResultOut.Results))
 	for index, matchingResultTemp := range matchingResultOut.Results {
 		fmt.Printf("EventId=%s Score=%.2f Explanation=%s\n",
 			matchingResultTemp.EventId, matchingResultTemp.Score, matchingResultTemp.Explanation)
