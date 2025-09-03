@@ -5,6 +5,8 @@ go 1.25.0
 require github.com/service v0.0.0-00010101000000-000000000000
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.3 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.38.2 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.31.4 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.8 // indirect
@@ -36,6 +38,7 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
+	golang.org/x/net v0.39.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

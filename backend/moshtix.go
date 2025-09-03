@@ -88,12 +88,10 @@ type moshtixResponse struct {
 	}
 }
 
-func convertToDbEvent(item moshtixItem) Event {
-	//tags := make([]string, 0, len(item.Tags.Items))
-	/*for _, tag := range item.Tags.Items {
-		tags = append(tags, tag.Name)
-	}*/
+type MoshtixScraper struct {
+}
 
+func convertToDbEvent(item moshtixItem) Event {
 	var result = Event{EventID: uuid.NewString(),
 		Source_name: string(Moshtix),
 		SourceEvent: strconv.Itoa(item.Id),
@@ -138,7 +136,7 @@ func convertToDbEvent(item moshtixItem) Event {
 	return result
 }
 
-func Scrape(pipeline Pipeline) error {
+func (d MoshtixScraper) Scrape(pipeline Pipeline) error {
 
 	var pageIndex = 0
 	var pageSize = 100

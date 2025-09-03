@@ -91,9 +91,10 @@ type User struct {
 type SourceType string
 
 const (
-	Moshtix    SourceType = "moshtix"
-	Eventbrite SourceType = "eventbrite"
-	Humanitix  SourceType = "humanitix"
+	Moshtix      SourceType = "moshtix"
+	MetroTheatre SourceType = "metrotheatre"
+	Eventbrite   SourceType = "eventbrite"
+	Humanitix    SourceType = "humanitix"
 )
 
 type Source struct {

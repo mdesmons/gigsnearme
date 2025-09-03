@@ -10,6 +10,10 @@ import (
 	"log"
 )
 
+type Scraper interface {
+	Scrape(pipeline Pipeline) error
+}
+
 type Deduplicator struct {
 	dbContext context.Context
 	dbClient  *dynamodb.Client
@@ -167,12 +171,17 @@ func (s *Saver) Save(event Event) (Event, error) {
 type Pipeline struct {
 	deduplicator Deduplicator
 	saver        Saver
+	scrapers     map[string]Scraper
 }
 
 func NewPipeline(dbContext context.Context, dbClient *dynamodb.Client) Pipeline {
 	return Pipeline{
 		deduplicator: NewDeduplicator(dbContext, dbClient),
 		saver:        NewSaver(dbContext, dbClient),
+		scrapers: map[string]Scraper{
+			"moshtix": MoshtixScraper{},
+			"metro":   MetroScraper{},
+		},
 	}
 }
 
@@ -190,4 +199,10 @@ func (p *Pipeline) Process(event Event) (Event, error) {
 	}
 
 	return event, nil
+}
+
+func (p Pipeline) Scrape() error {
+	p.scrapers["metro"].Scrape(p)
+	p.scrapers["moshtix"].Scrape(p)
+	return nil
 }

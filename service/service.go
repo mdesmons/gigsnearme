@@ -16,6 +16,7 @@ type Service struct {
 	dbContext context.Context
 	pipeline  backend.Pipeline
 	matcher   backend.Matcher
+	tagger    backend.Tagger
 }
 
 func NewService(dynamoURL string, region string) *Service {
@@ -25,22 +26,22 @@ func NewService(dynamoURL string, region string) *Service {
 		dbContext: dbContext,
 		pipeline:  backend.NewPipeline(dbContext, dbClient),
 		matcher:   backend.NewMatcher(dbContext, dbClient),
+		tagger:    backend.NewTagger(dbContext, dbClient),
 	}
 }
 
 func (s *Service) LoadEvents() error {
-	err := backend.Scrape(s.pipeline)
+	err := s.pipeline.Scrape()
 	if err != nil {
 		log.Printf(err.Error())
 	}
-	return err
+
+	return nil
 }
 
-func (s *Service) TagEvents() error {
-	tagger := backend.NewTagger(s.dbContext, s.dbClient)
-
-	events, err := backend.QueryUntaggedEvents(s.dbContext, s.dbClient, "moshtix")
-	log.Printf("Found %d untagged events\n", len(events))
+func (s *Service) tagEventsForSource(source string) error {
+	events, err := backend.QueryUntaggedEvents(s.dbContext, s.dbClient, source)
+	log.Printf("Found %d untagged events for source %s\n", len(events), source)
 	if err == nil {
 		slices := len(events) / 10
 		for i := 0; i <= slices; i++ {
@@ -51,11 +52,19 @@ func (s *Service) TagEvents() error {
 			}
 			batch := events[start:end]
 			log.Printf("Tagging batch %d: %d events\n", i, len(batch))
-			err = tagger.Tag(batch)
+			err = s.tagger.Tag(batch)
 			if err != nil {
 				log.Printf("Error tagging batch %d: %s\n", i, err.Error())
 			}
 		}
+	}
+	return err
+}
+
+func (s *Service) TagEvents() error {
+	err := s.tagEventsForSource("metrotheatre")
+	if err == nil {
+		err = s.tagEventsForSource("moshtix")
 	}
 	return err
 }

@@ -21,11 +21,10 @@ func NewMatcher(dbContext context.Context, dbClient *dynamodb.Client) Matcher {
 }
 
 type MatchingFeatures struct {
-	EventId    string   `json:"event_id"`
-	Categories []string `json:"categories"`
-	Tags       []string `json:"tags"`
-	ExtraTags  []string `json:"extra_tags"`
-	VenueName  string   `json:"venue_name"`
+	EventId   string   `json:"event_id"`
+	Tags      []string `json:"tags"`
+	ExtraTags []string `json:"extra_tags"`
+	VenueName string   `json:"venue_name"`
 }
 
 type MatchingResult struct {
@@ -46,11 +45,10 @@ func (t *Matcher) Match(events []Event, desire string, venues []string) ([]Event
 
 	for _, event := range events {
 		eventFeatures = append(eventFeatures, MatchingFeatures{
-			EventId:    event.EventID,
-			Categories: event.Categories,
-			Tags:       event.Tags,
-			ExtraTags:  event.ExtraTags,
-			VenueName:  event.VenueName,
+			EventId:   event.EventID,
+			Tags:      event.Tags,
+			ExtraTags: event.ExtraTags,
+			VenueName: event.VenueName,
 		})
 		// Create a map of events by ID for easy lookup later
 		eventsById[event.EventID] = event
@@ -59,12 +57,13 @@ func (t *Matcher) Match(events []Event, desire string, venues []string) ([]Event
 	prompt := fmt.Sprintf(`You are a matching assistant.
 Given an ordered list of event features and a user desire and preferred venues (if provided), produce a list of at most 5 recommended events for the user, 
 in order of best match first, by applying the following weights to each characteristic:
-- 0.5 for matching the user desire on event tags or extra_tags
-- 0.4 for matching event categories to user desire
-- 0.1 for matching on venue_name (case insensitive substring match)
+- 0.8 for matching the user desire on event tags or extra_tags
+- 0.2 for matching on venue_name (case insensitive substring match)
 
 Return ONLY JSON that conforms to the provided schema, where Score is a computed score based on the above criteria,
-and Explanation is a short description of how you came up with this score.
+and Explanation is a short description of how you came up with this score. 
+Make sure you return the EventId exactly as provided in the input.
+
 Input events:
 %v
 

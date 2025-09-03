@@ -3,6 +3,7 @@ module backend
 go 1.25.0
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/aws/aws-sdk-go-v2 v1.38.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.4
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.7
@@ -11,9 +12,11 @@ require (
 	github.com/hasura/go-graphql-client v0.14.4
 	github.com/invopop/jsonschema v0.13.0
 	github.com/openai/openai-go/v2 v2.1.1
+	golang.org/x/net v0.39.0
 )
 
 require (
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.8 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.5 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.5 // indirect
