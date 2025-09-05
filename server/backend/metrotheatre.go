@@ -3,18 +3,25 @@ package backend
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"net/http"
 	"time"
 )
 
 type MetroScraper struct {
+	logger zerolog.Logger
 }
 
-func scrapeEvent(url string) (*Event, error) {
-	fmt.Printf("Scraping event at %s\n", url)
+func NewMetroScraper(logger zerolog.Logger) MetroScraper {
+	return MetroScraper{
+		logger: logger,
+	}
+}
+
+func (d MetroScraper) scrapeEvent(url string) (*Event, error) {
+	d.logger.Debug().Msgf("Scraping event at %s", url)
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
@@ -81,56 +88,9 @@ func scrapeEvent(url string) (*Event, error) {
 	return &result, nil
 }
 
-/*
-func convertToDbEvent(item moshtixItem) Event {
-	var result = Event{EventID: uuid.NewString(),
-		Source_name: string(Moshtix),
-		SourceEvent: strconv.Itoa(item.Id),
-		Title:       item.Name,
-		Description: item.Description,
-		Start:       item.StartDate.UTC(),
-		End:         item.EndDate.UTC(),
-		VenueName:   item.Venue.Name,
-		URL:         item.EventUrl,
-		FetchedAt:   time.Now(),
-	}
-
-	if len(item.TicketTypes.Items) > 0 {
-		result.PriceMin = item.TicketTypes.Items[0].TicketPrice
-		result.PriceMax = item.TicketTypes.Items[len(item.TicketTypes.Items)-1].TicketPrice
-	}
-
-	for _, imageUrl := range item.Images.Items {
-		result.Images = append(result.Images, imageUrl.Url)
-	}
-
-	result.ContentFlags.EighteenPlus = (item.AgeRestriction == "OVER18")
-
-	if item.Venue.Address != nil {
-		result.Address = Address{
-			Line1:    item.Venue.Address.Line1,
-			Line2:    item.Venue.Address.Line2,
-			PostCode: item.Venue.Address.PostCode,
-			Locality: item.Venue.Address.Locality,
-			Region:   item.Venue.Address.Region,
-			Country:  item.Venue.Address.Country,
-		}
-	}
-
-	if item.Venue.Location != nil {
-		result.Geo = Geo{
-			Lat: item.Venue.Location.Latitude,
-			Lng: item.Venue.Location.Longitude,
-		}
-	}
-
-	return result
-}
-
-*/
 // Scrape fetches the Metro Theatre upcoming events page and extracts event links
 func (d MetroScraper) Scrape(pipeline Pipeline) error {
-	fmt.Println("Starting Metro Theatre scrape")
+	d.logger.Debug().Msg("Starting Metro Theatre scrape")
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
@@ -150,34 +110,34 @@ func (d MetroScraper) Scrape(pipeline Pipeline) error {
 
 	var links []string
 	doc.Find(".evt-card").Each(func(i int, s *goquery.Selection) {
-		fmt.Printf("Found evt-card section\n")
+		d.logger.Debug().Msg("Found evt-card section")
 		if s.Is("a") {
 
 			href, exists := s.Attr("href")
 			if exists {
-				fmt.Printf("Found link: %s\n", href)
+				d.logger.Debug().Msgf("Found link: %s\n", href)
 				links = append(links, href)
 
 			} else {
-				fmt.Printf("No link found in evt-card\n")
+				d.logger.Debug().Msg("No link found in evt-card")
 			}
 		}
 	})
 
-	fmt.Printf("Found %d event links\n", len(links))
+	d.logger.Debug().Msgf("Found %d event links\n", len(links))
 
 	for _, link := range links {
 		time.Sleep(1 * time.Second) // Be polite and avoid overwhelming the server
-		event, err := scrapeEvent(link)
+		event, err := d.scrapeEvent(link)
 		if err != nil {
-			fmt.Printf("Error scraping event at %s: %s\n", link, err.Error())
+			d.logger.Error().Msgf("Error scraping event at %s: %s\n", link, err.Error())
 			continue
 		}
 		_, err = pipeline.Process(*event)
 		if err != nil {
-			fmt.Printf("Error saving event %s - %s: %s\n", event.Source_name, event.SourceEvent, err.Error())
+			d.logger.Error().Msgf("Error saving event %s - %s: %s\n", event.Source_name, event.SourceEvent, err.Error())
 		} else {
-			fmt.Printf("Saved event %s - %s\n", event.Source_name, event.SourceEvent)
+			d.logger.Debug().Msgf("Saved event %s - %s\n", event.Source_name, event.SourceEvent)
 		}
 	}
 	return nil

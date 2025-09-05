@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"log"
+	"github.com/rs/zerolog"
 	"time"
 )
 
@@ -115,7 +115,13 @@ type RawEvent struct {
 	Payload   map[string]interface{} `dynamodbav:"payload"`    // opaque JSON
 }
 
-func InitDb(endpointURL string, region string) (*dynamodb.Client, context.Context, error) {
+type Db struct {
+	dbContext context.Context
+	dbClient  *dynamodb.Client
+	logger    zerolog.Logger
+}
+
+func NewDb(endpointURL string, region string, logger zerolog.Logger) (Db, error) {
 	ctx := context.Background()
 
 	// Load config (honors AWS_REGION, AWS_PROFILE, etc.)
@@ -126,7 +132,7 @@ func InitDb(endpointURL string, region string) (*dynamodb.Client, context.Contex
 		return nil
 	})
 	if err != nil {
-		log.Fatalf("failed loading AWS config: %v", err)
+		logger.Fatal().Msgf("failed loading AWS config: %v", err)
 	}
 
 	if endpointURL != "" {
@@ -136,21 +142,22 @@ func InitDb(endpointURL string, region string) (*dynamodb.Client, context.Contex
 
 	client := dynamodb.NewFromConfig(cfg)
 
-	return client, ctx, nil
+	return Db{ctx, client, logger}, nil
 }
 
 func utcMonthBucket(t time.Time) string { return t.UTC().Format("2006-01") }
 
-func WriteEvent(ctx context.Context, dc *dynamodb.Client, event Event) error {
+func (obj Db) WriteEvent(event Event) error {
 
 	event.StartBucket = utcMonthBucket(event.Start)
 
 	av, err := attributevalue.MarshalMap(event)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		obj.logger.Error().Msgf("marshal: %s", err.Error())
+		return err
 	}
 
-	_, err = dc.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err = obj.dbClient.PutItem(obj.dbContext, &dynamodb.PutItemInput{
 		TableName: aws.String("Events"),
 		Item:      av,
 	})
@@ -158,8 +165,8 @@ func WriteEvent(ctx context.Context, dc *dynamodb.Client, event Event) error {
 }
 
 // Query exactly one (or few) item(s) using both GSI keys: source AND source_event_id
-func QueryEventsBySourceAndSourceEventID(ctx context.Context, ddb *dynamodb.Client, source, sourceEventID string) ([]Event, error) {
-	out, err := ddb.Query(ctx, &dynamodb.QueryInput{
+func (obj Db) QueryEventsBySourceAndSourceEventID(source, sourceEventID string) ([]Event, error) {
+	out, err := obj.dbClient.Query(obj.dbContext, &dynamodb.QueryInput{
 		TableName:              aws.String("Events"),
 		IndexName:              aws.String("SourceEvent"),
 		KeyConditionExpression: aws.String("source_name = :src AND source_event_id = :seid"),
@@ -180,13 +187,13 @@ func QueryEventsBySourceAndSourceEventID(ctx context.Context, ddb *dynamodb.Clie
 	return items, nil
 }
 
-func QueryUntaggedEvents(ctx context.Context, ddb *dynamodb.Client, source string) ([]Event, error) {
+func (obj Db) QueryUntaggedEvents(source string) ([]Event, error) {
 
 	var all []Event
 	var eks map[string]types.AttributeValue
 	for {
 
-		out, err := ddb.Query(ctx, &dynamodb.QueryInput{
+		out, err := obj.dbClient.Query(obj.dbContext, &dynamodb.QueryInput{
 			TableName:              aws.String("Events"),
 			IndexName:              aws.String("SourceEvent"),
 			KeyConditionExpression: aws.String("source_name = :src"),
@@ -201,7 +208,7 @@ func QueryUntaggedEvents(ctx context.Context, ddb *dynamodb.Client, source strin
 		)
 
 		if err != nil {
-			fmt.Println(err.Error())
+			obj.logger.Error().Msgf("marshal: %s", err.Error())
 			return nil, err
 		}
 
@@ -232,10 +239,9 @@ func monthBuckets(from, to time.Time) []string {
 	return res
 }
 
-func QueryEventsByCategoryAndDate(ctx context.Context, ddb *dynamodb.Client,
-	dateFrom time.Time, dateTo time.Time, userCategory string) ([]Event, error) {
+func (obj Db) QueryEventsByCategoryAndDate(dateFrom time.Time, dateTo time.Time, userCategory string) ([]Event, error) {
 
-	fmt.Println("Querying events between ", dateFrom, " and ", dateTo, " for category ", userCategory)
+	obj.logger.Info().Msgf("Querying events between %s and %s for category %s", dateFrom, dateTo, userCategory)
 	if len(userCategory) == 0 {
 		return nil, nil // nothing to match
 	}
@@ -253,7 +259,7 @@ func QueryEventsByCategoryAndDate(ctx context.Context, ddb *dynamodb.Client,
 
 	var all []Event
 	for _, b := range monthBuckets(dateFrom, dateTo) {
-		fmt.Println("Querying bucket ", b)
+		obj.logger.Debug().Msgf("Querying bucket %s", b)
 		var eks map[string]types.AttributeValue
 		for {
 			eav[":b"] = &types.AttributeValueMemberS{Value: b}
@@ -270,12 +276,12 @@ func QueryEventsByCategoryAndDate(ctx context.Context, ddb *dynamodb.Client,
 				ScanIndexForward:          aws.Bool(true), // earliest first
 			}
 
-			out, err := ddb.Query(ctx, &queryInput)
-			fmt.Println("Found ", len(out.Items), " items in this page")
+			out, err := obj.dbClient.Query(obj.dbContext, &queryInput)
 			if err != nil {
-				fmt.Println(err.Error())
+				obj.logger.Error().Msgf(err.Error())
 				return nil, err
 			}
+			obj.logger.Debug().Msgf("Found %d items in this page", len(out.Items))
 
 			var page []Event
 			if err := attributevalue.UnmarshalListOfMaps(out.Items, &page); err != nil {
@@ -293,7 +299,7 @@ func QueryEventsByCategoryAndDate(ctx context.Context, ddb *dynamodb.Client,
 	return all, nil
 }
 
-func UpdateEventTags(ctx context.Context, ddb *dynamodb.Client, event Event) (Event, error) {
+func (obj Db) UpdateEventTags(event Event) (Event, error) {
 	var tagAttributeValues = make([]types.AttributeValue, len(event.Tags))
 	for i, tag := range event.Tags {
 		tagAttributeValues[i] = &types.AttributeValueMemberS{Value: tag}
@@ -309,7 +315,7 @@ func UpdateEventTags(ctx context.Context, ddb *dynamodb.Client, event Event) (Ev
 		categoriesValue[i] = &types.AttributeValueMemberS{Value: tag}
 	}
 
-	response, err := ddb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+	response, err := obj.dbClient.UpdateItem(obj.dbContext, &dynamodb.UpdateItemInput{
 		TableName: aws.String("Events"),
 		Key: map[string]types.AttributeValue{
 			"event_id": &types.AttributeValueMemberS{Value: event.EventID},
@@ -337,33 +343,34 @@ func UpdateEventTags(ctx context.Context, ddb *dynamodb.Client, event Event) (Ev
 	})
 
 	if err != nil {
-		log.Printf("Couldn't update event %v: %v\n", event.EventID, err)
+		obj.logger.Error().Msgf("Couldn't update event %v: %v\n", event.EventID, err)
 		return event, err
 	} else {
 		var updated Event
 		err = attributevalue.UnmarshalMap(response.Attributes, &updated)
 		if err != nil {
-			log.Printf("Couldn't unmarshall update response: %v\n", err)
+			obj.logger.Error().Msgf("Couldn't unmarshall update response: %v\n", err)
 		}
 		return updated, err
 	}
 }
 
-func WriteUser(ctx context.Context, dc *dynamodb.Client, user User) error {
+func (obj Db) WriteUser(user User) error {
 	av, err := attributevalue.MarshalMap(user)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		obj.logger.Error().Msgf(err.Error())
+		return err
 	}
 
-	_, err = dc.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err = obj.dbClient.PutItem(obj.dbContext, &dynamodb.PutItemInput{
 		TableName: aws.String("Users"),
 		Item:      av,
 	})
 	return err
 }
 
-func QueryUserByUserID(ctx context.Context, ddb *dynamodb.Client, userID string) (*User, error) {
-	out, err := ddb.GetItem(ctx, &dynamodb.GetItemInput{
+func (obj Db) QueryUserByUserID(userID string) (*User, error) {
+	out, err := obj.dbClient.GetItem(obj.dbContext, &dynamodb.GetItemInput{
 		TableName: aws.String("Users"),
 		Key: map[string]types.AttributeValue{
 			"user_id": &types.AttributeValueMemberS{Value: userID},
@@ -371,6 +378,7 @@ func QueryUserByUserID(ctx context.Context, ddb *dynamodb.Client, userID string)
 		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
+		obj.logger.Error().Msgf(err.Error())
 		return nil, err
 	}
 	var user User
@@ -378,4 +386,212 @@ func QueryUserByUserID(ctx context.Context, ddb *dynamodb.Client, userID string)
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (obj Db) CreateEventsTable() error {
+	const (
+		tableName      = "Events"
+		gsiSourceEvent = "SourceEvent"
+		gsiStartTime   = "StartTimeIndex"
+	)
+
+	// Check if table exists
+	_, err := obj.dbClient.DescribeTable(obj.dbContext, &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	})
+	if err == nil {
+		obj.logger.Info().Msgf("Table %q already exists. Skipping creation.", tableName)
+		return nil
+	}
+
+	// Define table with:
+	// - PK: event_id (S)
+	// - GSI1: SourceEvent (source PK, source_event_id SK)
+	// - GSI2: StartTimeIndex (start PK)  — start is stored as RFC3339 string
+	input := &dynamodb.CreateTableInput{
+		TableName: aws.String(tableName),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("event_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("source_name"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("source_event_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("start"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("start_bucket"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("event_id"), KeyType: types.KeyTypeHash},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String(gsiSourceEvent),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("source_name"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("source_event_id"), KeyType: types.KeyTypeRange},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+			},
+			{
+				IndexName: aws.String("StartBucketIndex"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("start_bucket"), KeyType: types.KeyTypeHash}, // PK
+					{AttributeName: aws.String("start"), KeyType: types.KeyTypeRange},       // SK
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest, // on-demand: no capacity planning
+	}
+
+	obj.logger.Info().Msgf("Creating table %q ...", tableName)
+	if _, err := obj.dbClient.CreateTable(obj.dbContext, input); err != nil {
+		return fmt.Errorf("CreateTable: %w", err)
+	}
+
+	// Wait for ACTIVE
+	waiter := dynamodb.NewTableExistsWaiter(obj.dbClient)
+	if err := waiter.Wait(obj.dbContext, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, 5*time.Minute); err != nil {
+		return fmt.Errorf("waiting for table ACTIVE: %w", err)
+	}
+
+	return nil
+}
+
+func (obj Db) CreateRawEventsTable() error {
+	const (
+		tableName    = "RawEvents"
+		gsiFetchedAt = "FetchedAtIndex"
+	)
+
+	// Check if table exists
+	_, err := obj.dbClient.DescribeTable(obj.dbContext, &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	})
+	if err == nil {
+		obj.logger.Info().Msgf("Table %q already exists. Skipping creation.", tableName)
+		return nil
+	}
+
+	// Define table with:
+	// - PK: event_id (S)
+	// - GSI1: SourceEvent (source PK, source_event_id SK)
+	// - GSI2: StartTimeIndex (start PK)  — start is stored as RFC3339 string
+	input := &dynamodb.CreateTableInput{
+		TableName: aws.String(tableName),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("source_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("fetched_at"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("source_id"), KeyType: types.KeyTypeHash},
+			{AttributeName: aws.String("fetched_at"), KeyType: types.KeyTypeRange},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String(gsiFetchedAt),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("fetched_at"), KeyType: types.KeyTypeHash},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest, // on-demand: no capacity planning
+	}
+
+	obj.logger.Info().Msgf("Creating table %q ...", tableName)
+	if _, err := obj.dbClient.CreateTable(obj.dbContext, input); err != nil {
+		return fmt.Errorf("CreateTable: %w", err)
+	}
+
+	// Wait for ACTIVE
+	waiter := dynamodb.NewTableExistsWaiter(obj.dbClient)
+	if err := waiter.Wait(obj.dbContext, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, 5*time.Minute); err != nil {
+		return fmt.Errorf("waiting for table ACTIVE: %w", err)
+	}
+
+	return nil
+}
+
+func (obj Db) CreateUsersTable() error {
+	const (
+		tableName = "Users"
+	)
+
+	// Check if table exists
+	_, err := obj.dbClient.DescribeTable(obj.dbContext, &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	})
+	if err == nil {
+		obj.logger.Info().Msgf("Table %q already exists. Skipping creation.", tableName)
+		return nil
+	}
+
+	// Define table with:
+	// - PK: event_id (S)
+	// - GSI1: SourceEvent (source PK, source_event_id SK)
+	// - GSI2: StartTimeIndex (start PK)  — start is stored as RFC3339 string
+	input := &dynamodb.CreateTableInput{
+		TableName: aws.String(tableName),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("user_id"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("user_id"), KeyType: types.KeyTypeHash},
+		},
+		BillingMode: types.BillingModePayPerRequest, // on-demand: no capacity planning
+	}
+
+	obj.logger.Info().Msgf("Creating table %q ...", tableName)
+	if _, err := obj.dbClient.CreateTable(obj.dbContext, input); err != nil {
+		return fmt.Errorf("CreateTable: %w", err)
+	}
+
+	// Wait for ACTIVE
+	waiter := dynamodb.NewTableExistsWaiter(obj.dbClient)
+	if err := waiter.Wait(obj.dbContext, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, 5*time.Minute); err != nil {
+		return fmt.Errorf("waiting for table ACTIVE: %w", err)
+	}
+
+	return nil
+}
+
+func (obj Db) CreateSourcesTable() error {
+	const (
+		tableName = "Sources"
+	)
+
+	// Check if table exists
+	_, err := obj.dbClient.DescribeTable(obj.dbContext, &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	})
+	if err == nil {
+		obj.logger.Info().Msgf("Table %q already exists. Skipping creation.", tableName)
+		return nil
+	}
+
+	// Define table with:
+	// - PK: event_id (S)
+	// - GSI1: SourceEvent (source PK, source_event_id SK)
+	// - GSI2: StartTimeIndex (start PK)  — start is stored as RFC3339 string
+	input := &dynamodb.CreateTableInput{
+		TableName: aws.String(tableName),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("source_id"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("source_id"), KeyType: types.KeyTypeHash},
+		},
+		BillingMode: types.BillingModePayPerRequest, // on-demand: no capacity planning
+	}
+
+	obj.logger.Info().Msgf("Creating table %q ...", tableName)
+	if _, err := obj.dbClient.CreateTable(obj.dbContext, input); err != nil {
+		return fmt.Errorf("CreateTable: %w", err)
+	}
+
+	// Wait for ACTIVE
+	waiter := dynamodb.NewTableExistsWaiter(obj.dbClient)
+	if err := waiter.Wait(obj.dbContext, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, 5*time.Minute); err != nil {
+		return fmt.Errorf("waiting for table ACTIVE: %w", err)
+	}
+
+	return nil
 }

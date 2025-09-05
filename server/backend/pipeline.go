@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v2"
-	"log"
+	"github.com/rs/zerolog"
 )
 
 type Scraper interface {
@@ -15,14 +14,14 @@ type Scraper interface {
 }
 
 type Deduplicator struct {
-	dbContext context.Context
-	dbClient  *dynamodb.Client
+	dbLayer Db
+	logger  zerolog.Logger
 }
 
-func NewDeduplicator(dbContext context.Context, dbClient *dynamodb.Client) Deduplicator {
+func NewDeduplicator(dbLayer Db, logger zerolog.Logger) Deduplicator {
 	return Deduplicator{
-		dbContext: dbContext,
-		dbClient:  dbClient,
+		dbLayer: dbLayer,
+		logger:  logger,
 	}
 }
 
@@ -30,7 +29,7 @@ func (d *Deduplicator) Deduplicate(event Event) (Event, error) {
 	// Check if an event with the same Source_name and SourceEvent already exists in the database
 	// If it exists, return an error
 	// If it doesn't exist, return the event as is
-	events, err := QueryEventsBySourceAndSourceEventID(d.dbContext, d.dbClient, event.Source_name, event.SourceEvent)
+	events, err := d.dbLayer.QueryEventsBySourceAndSourceEventID(event.Source_name, event.SourceEvent)
 	if len(events) > 0 {
 		return event, fmt.Errorf("duplicate event found: %s - %s", event.Source_name, event.SourceEvent)
 	}
@@ -39,14 +38,14 @@ func (d *Deduplicator) Deduplicate(event Event) (Event, error) {
 }
 
 type Tagger struct {
-	dbContext context.Context
-	dbClient  *dynamodb.Client
+	dbLayer Db
+	logger  zerolog.Logger
 }
 
-func NewTagger(dbContext context.Context, dbClient *dynamodb.Client) Tagger {
+func NewTagger(dbLayer Db, logger zerolog.Logger) Tagger {
 	return Tagger{
-		dbContext: dbContext,
-		dbClient:  dbClient,
+		dbLayer: dbLayer,
+		logger:  logger,
 	}
 }
 
@@ -75,7 +74,7 @@ func GenerateSchema[T any]() interface{} {
 
 var batchOutSchema = GenerateSchema[BatchOut]()
 
-func (t *Tagger) Tag(events []Event) error {
+func (obj *Tagger) Tag(events []Event) error {
 	eventDescriptions := make([]string, len(events))
 
 	for _, event := range events {
@@ -127,7 +126,7 @@ Input events (0-based indices):
 
 	for _, result := range batchOut.Results {
 		if result.Index >= len(events) {
-			log.Printf("Skipping out-of-bounds result (event index %d)", result.Index)
+			obj.logger.Warn().Msgf("Skipping out-of-bounds result (event index %d)", result.Index)
 			continue
 		}
 
@@ -137,11 +136,11 @@ Input events (0-based indices):
 		event.Caption = result.Caption
 		event.Categories = result.Categories
 
-		_, err := UpdateEventTags(t.dbContext, t.dbClient, event)
+		_, err := obj.dbLayer.UpdateEventTags(event)
 		if err != nil {
-			log.Printf("Error writing tagged event %s - %s: %s", event.Source_name, event.SourceEvent, err.Error())
+			obj.logger.Error().Msgf("Error writing tagged event %s - %s: %s", event.Source_name, event.SourceEvent, err.Error())
 		} else {
-			log.Printf("Tagged event %s - %s with %d tags", event.Source_name, event.SourceEvent, len(event.Tags))
+			obj.logger.Debug().Msgf("Tagged event %s - %s with %d tags", event.Source_name, event.SourceEvent, len(event.Tags))
 		}
 	}
 
@@ -149,19 +148,19 @@ Input events (0-based indices):
 }
 
 type Saver struct {
-	dbContext context.Context
-	dbClient  *dynamodb.Client
+	dbLayer Db
+	logger  zerolog.Logger
 }
 
-func NewSaver(dbContext context.Context, dbClient *dynamodb.Client) Saver {
+func NewSaver(dbLayer Db, logger zerolog.Logger) Saver {
 	return Saver{
-		dbContext: dbContext,
-		dbClient:  dbClient,
+		dbLayer: dbLayer,
+		logger:  logger,
 	}
 }
 
-func (s *Saver) Save(event Event) (Event, error) {
-	err := WriteEvent(s.dbContext, s.dbClient, event)
+func (obj *Saver) Save(event Event) (Event, error) {
+	err := obj.dbLayer.WriteEvent(event)
 	if err != nil {
 		return event, err
 	}
@@ -172,37 +171,39 @@ type Pipeline struct {
 	deduplicator Deduplicator
 	saver        Saver
 	scrapers     map[string]Scraper
+	logger       zerolog.Logger
 }
 
-func NewPipeline(dbContext context.Context, dbClient *dynamodb.Client) Pipeline {
+func NewPipeline(dbLayer Db, logger zerolog.Logger) Pipeline {
 	return Pipeline{
-		deduplicator: NewDeduplicator(dbContext, dbClient),
-		saver:        NewSaver(dbContext, dbClient),
+		logger:       logger,
+		deduplicator: NewDeduplicator(dbLayer, logger),
+		saver:        NewSaver(dbLayer, logger),
 		scrapers: map[string]Scraper{
-			"moshtix": MoshtixScraper{},
-			"metro":   MetroScraper{},
+			"moshtix": NewMoshtixScraper(logger),
+			"metro":   NewMetroScraper(logger),
 		},
 	}
 }
 
-func (p *Pipeline) Process(event Event) (Event, error) {
-	event, err := p.deduplicator.Deduplicate(event)
+func (obj Pipeline) Process(event Event) (Event, error) {
+	event, err := obj.deduplicator.Deduplicate(event)
 	if err != nil {
-		log.Printf("Deduplication: %s", err.Error())
+		obj.logger.Info().Msgf("Deduplication: %s", err.Error())
 		return event, err
 	}
 
-	event, err = p.saver.Save(event)
+	event, err = obj.saver.Save(event)
 	if err != nil {
-		log.Printf("Tagging: %s", err.Error())
+		obj.logger.Info().Msgf("Tagging: %s", err.Error())
 		return event, err
 	}
 
 	return event, nil
 }
 
-func (p Pipeline) Scrape() error {
-	p.scrapers["metro"].Scrape(p)
-	p.scrapers["moshtix"].Scrape(p)
+func (obj Pipeline) Scrape() error {
+	obj.scrapers["metro"].Scrape(obj)
+	obj.scrapers["moshtix"].Scrape(obj)
 	return nil
 }

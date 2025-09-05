@@ -4,7 +4,6 @@ import (
 	"flag"
 	"github.com/service"
 	"log"
-	"time"
 )
 
 const (
@@ -20,18 +19,6 @@ func main() {
 	flag.Parse()
 
 	var svc = service.NewService(endpointURL, region)
-	events, err := svc.MatchEvents(time.Date(2025, 8, 31, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 9, 30, 0, 0, 0, 0, time.UTC),
-		"music",
-		"I want to go to a punk or indie concert preferably at a small venue",
-		[]string{"The Landsdowne Hotel", "Oxford art factory"})
-
-	if err != nil {
-		log.Printf(err.Error())
-		return
-	}
-
-	for _, r := range events {
-		log.Printf("EventId=%s Description=%s", r.EventID, r.Caption)
-	}
+	svc.CreateTables()
+	log.Println("Done.")
 }

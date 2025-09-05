@@ -4,19 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/openai/openai-go/v2"
+	"github.com/rs/zerolog"
 )
 
 type Matcher struct {
-	dbContext context.Context
-	dbClient  *dynamodb.Client
+	dbLayer Db
+	logger  zerolog.Logger
 }
 
-func NewMatcher(dbContext context.Context, dbClient *dynamodb.Client) Matcher {
+func NewMatcher(dbLayer Db, logger zerolog.Logger) Matcher {
 	return Matcher{
-		dbContext: dbContext,
-		dbClient:  dbClient,
+		dbLayer: dbLayer,
+		logger:  logger,
 	}
 }
 
@@ -92,25 +92,27 @@ User preferred venues: %v
 	})
 
 	if err != nil {
-		panic(err.Error())
+		t.logger.Error().Msg(err.Error())
+		return nil, err
 	}
 
 	// The model responds with a JSON string, so parse it into a struct
 	var matchingResultOut MatchingResultOut
 	err = json.Unmarshal([]byte(chat.Choices[0].Message.Content), &matchingResultOut)
 	if err != nil {
-		panic(err.Error())
+		t.logger.Error().Msg(err.Error())
+		return nil, err
 	}
 
 	var output = make([]Event, len(matchingResultOut.Results))
 	for index, matchingResultTemp := range matchingResultOut.Results {
-		fmt.Printf("EventId=%s Score=%.2f Explanation=%s\n",
+		t.logger.Debug().Msgf("EventId=%s Score=%.2f Explanation=%s\n",
 			matchingResultTemp.EventId, matchingResultTemp.Score, matchingResultTemp.Explanation)
 
 		if recommendedEvent, ok := eventsById[matchingResultTemp.EventId]; ok {
 			output[index] = recommendedEvent
 		} else {
-			fmt.Printf("Skipping unknown EventId %s\n", matchingResultTemp.EventId)
+			t.logger.Warn().Msgf("Skipping unknown EventId %s\n", matchingResultTemp.EventId)
 		}
 	}
 

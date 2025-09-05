@@ -2,9 +2,9 @@ package backend
 
 import (
 	"context"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
+	"github.com/rs/zerolog"
 	"strconv"
 	"time"
 )
@@ -89,6 +89,13 @@ type moshtixResponse struct {
 }
 
 type MoshtixScraper struct {
+	logger zerolog.Logger
+}
+
+func NewMoshtixScraper(logger zerolog.Logger) MoshtixScraper {
+	return MoshtixScraper{
+		logger: logger,
+	}
 }
 
 func convertToDbEvent(item moshtixItem) Event {
@@ -146,7 +153,7 @@ func (d MoshtixScraper) Scrape(pipeline Pipeline) error {
 
 	for {
 		var moshtixResponse = moshtixResponse{}
-		fmt.Println("Getting page", pageIndex)
+		d.logger.Debug().Msgf("Getting page %d", pageIndex)
 
 		// Variables
 		vars := map[string]any{
@@ -162,8 +169,8 @@ func (d MoshtixScraper) Scrape(pipeline Pipeline) error {
 		client := graphql.NewClient("https://api.moshtix.com/v1/graphql", nil).WithDebug(true)
 		err := client.Query(context.Background(), &moshtixResponse, vars)
 		if err != nil {
-			fmt.Printf(err.Error())
-			// Handle error.
+			d.logger.Error().Msg(err.Error())
+			return err
 		}
 
 		eventsFetched += len(moshtixResponse.Viewer.GetEvents.Items)
@@ -174,7 +181,7 @@ func (d MoshtixScraper) Scrape(pipeline Pipeline) error {
 			dbEvent := convertToDbEvent(element)
 			_, err := pipeline.Process(dbEvent)
 			if err != nil {
-				fmt.Println(err.Error())
+				d.logger.Error().Msg(err.Error())
 			} else {
 				eventsProcessed++
 			}
@@ -189,6 +196,6 @@ func (d MoshtixScraper) Scrape(pipeline Pipeline) error {
 		//	time.Sleep(3 * time.Second)
 	}
 
-	fmt.Println("Fetched ", eventsFetched, " events, successfully processed ", eventsProcessed, " events")
+	d.logger.Info().Msgf("Fetched ", eventsFetched, " events, successfully processed ", eventsProcessed, " events")
 	return nil
 }
