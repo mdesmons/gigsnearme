@@ -196,6 +196,6 @@ func (d MoshtixScraper) Scrape(pipeline Pipeline) error {
 		//	time.Sleep(3 * time.Second)
 	}
 
-	d.logger.Info().Msgf("Fetched ", eventsFetched, " events, successfully processed ", eventsProcessed, " events")
+	d.logger.Info().Msgf("Fetched %d events, successfully processed %d events", eventsFetched, eventsProcessed)
 	return nil
 }

@@ -20,8 +20,8 @@ func NewMetroScraper(logger zerolog.Logger) MetroScraper {
 	}
 }
 
-func (d MetroScraper) scrapeEvent(url string) (*Event, error) {
-	d.logger.Debug().Msgf("Scraping event at %s", url)
+func (obj MetroScraper) scrapeEvent(url string) (*Event, error) {
+	obj.logger.Debug().Msgf("Scraping event at %s", url)
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
@@ -89,8 +89,8 @@ func (d MetroScraper) scrapeEvent(url string) (*Event, error) {
 }
 
 // Scrape fetches the Metro Theatre upcoming events page and extracts event links
-func (d MetroScraper) Scrape(pipeline Pipeline) error {
-	d.logger.Debug().Msg("Starting Metro Theatre scrape")
+func (obj MetroScraper) Scrape(pipeline Pipeline) error {
+	obj.logger.Debug().Msg("Starting Metro Theatre scrape")
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
@@ -110,34 +110,44 @@ func (d MetroScraper) Scrape(pipeline Pipeline) error {
 
 	var links []string
 	doc.Find(".evt-card").Each(func(i int, s *goquery.Selection) {
-		d.logger.Debug().Msg("Found evt-card section")
+		obj.logger.Debug().Msg("Found evt-card section")
 		if s.Is("a") {
 
 			href, exists := s.Attr("href")
 			if exists {
-				d.logger.Debug().Msgf("Found link: %s\n", href)
+				obj.logger.Debug().Msgf("Found link: %s\n", href)
 				links = append(links, href)
 
 			} else {
-				d.logger.Debug().Msg("No link found in evt-card")
+				obj.logger.Debug().Msg("No link found in evt-card")
 			}
 		}
 	})
 
-	d.logger.Debug().Msgf("Found %d event links\n", len(links))
+	obj.logger.Debug().Msgf("Found %obj event links\n", len(links))
 
 	for _, link := range links {
-		time.Sleep(1 * time.Second) // Be polite and avoid overwhelming the server
-		event, err := d.scrapeEvent(link)
+		eventExists, err := pipeline.EventExists(string(MetroTheatre), link)
 		if err != nil {
-			d.logger.Error().Msgf("Error scraping event at %s: %s\n", link, err.Error())
+			obj.logger.Error().Msgf("Error checking if event exists %s: %s\n", link, err.Error())
+			continue
+		}
+		if eventExists {
+			obj.logger.Debug().Msgf("Event already exists, skipping: %s\n", link)
+			continue
+		}
+		
+		time.Sleep(1 * time.Second) // Be polite and avoid overwhelming the server
+		event, err := obj.scrapeEvent(link)
+		if err != nil {
+			obj.logger.Error().Msgf("Error scraping event at %s: %s\n", link, err.Error())
 			continue
 		}
 		_, err = pipeline.Process(*event)
 		if err != nil {
-			d.logger.Error().Msgf("Error saving event %s - %s: %s\n", event.Source_name, event.SourceEvent, err.Error())
+			obj.logger.Error().Msgf("Error saving event %s - %s: %s\n", event.Source_name, event.SourceEvent, err.Error())
 		} else {
-			d.logger.Debug().Msgf("Saved event %s - %s\n", event.Source_name, event.SourceEvent)
+			obj.logger.Debug().Msgf("Saved event %s - %s\n", event.Source_name, event.SourceEvent)
 		}
 	}
 	return nil

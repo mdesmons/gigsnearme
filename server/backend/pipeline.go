@@ -170,7 +170,7 @@ func (obj *Saver) Save(event Event) (Event, error) {
 type Pipeline struct {
 	deduplicator Deduplicator
 	saver        Saver
-	scrapers     map[string]Scraper
+	scrapers     map[SourceType]Scraper
 	logger       zerolog.Logger
 }
 
@@ -179,11 +179,19 @@ func NewPipeline(dbLayer Db, logger zerolog.Logger) Pipeline {
 		logger:       logger,
 		deduplicator: NewDeduplicator(dbLayer, logger),
 		saver:        NewSaver(dbLayer, logger),
-		scrapers: map[string]Scraper{
-			"moshtix": NewMoshtixScraper(logger),
-			"metro":   NewMetroScraper(logger),
+		scrapers: map[SourceType]Scraper{
+			Moshtix:      NewMoshtixScraper(logger),
+			MetroTheatre: NewMetroScraper(logger),
 		},
 	}
+}
+
+func (obj Pipeline) EventExists(source, sourceEvent string) (bool, error) {
+	events, err := obj.deduplicator.dbLayer.QueryEventsBySourceAndSourceEventID(source, sourceEvent)
+	if err != nil {
+		return false, err
+	}
+	return len(events) > 0, nil
 }
 
 func (obj Pipeline) Process(event Event) (Event, error) {
@@ -203,7 +211,7 @@ func (obj Pipeline) Process(event Event) (Event, error) {
 }
 
 func (obj Pipeline) Scrape() error {
-	obj.scrapers["metro"].Scrape(obj)
-	obj.scrapers["moshtix"].Scrape(obj)
+	obj.scrapers[MetroTheatre].Scrape(obj)
+	obj.scrapers[Moshtix].Scrape(obj)
 	return nil
 }

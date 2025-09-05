@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+type MatchingRequest struct {
+	// Time range
+	StartDate   time.Time `json:"start_date"`
+	EndDate     time.Time `json:"end_date"`
+	Category    string    `json:"category"`
+	Description string    `json:"description"`
+	Venues      []string  `json:"venues"`
+}
+
 type RecommendedEvent struct {
 	Source_name  string // GSI PK
 	Title        string
@@ -113,15 +122,15 @@ func (s Service) TagEvents() error {
 	return nil
 }
 
-func (s Service) MatchEvents(dateFrom time.Time,
-	dateTo time.Time,
-	category string,
-	searchString string,
-	venues []string) ([]RecommendedEvent, error) {
+func (s Service) MatchEvents(request MatchingRequest) ([]RecommendedEvent, error) {
 	s.logger.Debug().Msgf("Matching events from %s to %s, category: %s, searchString: %s, venues: %v\n",
-		dateFrom.Format("2006-01-02"), dateTo.Format("2006-01-02"), category, searchString, venues)
+		request.StartDate.Format("2006-01-02"),
+		request.EndDate.Format("2006-01-02"),
+		request.Category,
+		request.Description,
+		request.Venues)
 
-	events, err := s.dbLayer.QueryEventsByCategoryAndDate(dateFrom, dateTo, category)
+	events, err := s.dbLayer.QueryEventsByCategoryAndDate(request.StartDate, request.EndDate, request.Category)
 
 	if err != nil {
 		s.logger.Error().Msg(err.Error())
@@ -129,7 +138,7 @@ func (s Service) MatchEvents(dateFrom time.Time,
 	}
 
 	s.logger.Debug().Msgf("Found %d events to match against", len(events))
-	eventsRecommendedByMatcher, err := s.matcher.Match(events, searchString, venues)
+	eventsRecommendedByMatcher, err := s.matcher.Match(events, request.Description, request.Venues)
 	if err != nil {
 		s.logger.Error().Msg(err.Error())
 		return nil, err
