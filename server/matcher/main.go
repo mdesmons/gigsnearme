@@ -49,7 +49,7 @@ func readEnv(cfg *Config) {
 	}
 }
 
-func handleRequest(ctx context.Context, event json.RawMessage) ([]service.RecommendedEvent, error) {
+func handleRequest(ctx context.Context, event json.RawMessage) ([]byte, error) {
 	logger := log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 	var cfg Config
 	readFile(&cfg)
@@ -71,7 +71,9 @@ func handleRequest(ctx context.Context, event json.RawMessage) ([]service.Recomm
 		return nil, err
 	}
 
-	return events, nil
+	data, _ := json.Marshal(events)
+
+	return data, nil
 }
 
 func main() {
@@ -87,6 +89,7 @@ func main() {
 			Venues:      []string{"The Landsdowne Hotel", "Oxford art factory"},
 		}
 		data, _ := json.Marshal(request)
+		log.Printf("%s", string(data))
 		events, err := handleRequest(nil, data)
 
 		if err != nil {
