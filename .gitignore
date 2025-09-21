@@ -1,3 +1,4 @@
 **/bootstrap
 *.zip
 docker/
+node_modules/
