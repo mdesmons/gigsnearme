@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ConnectSpotifyButton from "../components/ConnectSpotifyButton";
 
 const categories = ['music', 'culture', 'sex-positive', 'workshop', 'talk', 'other'];
 
@@ -105,6 +106,7 @@ export default function Home() {
   return (
     <div className="container">
       <h1>Gigs Near Me</h1>
+      <ConnectSpotifyButton />
       <MatchingForm onSubmit={handleSubmit} />
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
