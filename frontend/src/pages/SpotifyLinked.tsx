@@ -1,5 +1,6 @@
 // src/pages/SpotifyLinked.tsx
 import React, { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { getJSON } from "../api";
 
 type SavedTracksResponse = {
@@ -14,24 +15,23 @@ export default function SpotifyLinked() {
     const [status, setStatus] = useState<"idle" | "ok" | "err">("idle");
     const [err, setErr] = useState<string>("");
     const [sample, setSample] = useState<Array<string>>([]);
+    const [searchParams] = useSearchParams();
 
     useEffect(() => {
-        // If you pass ?error=... from backend on failure, show it
-        const params = new URLSearchParams(window.location.search);
-        const e = params.get("error");
-        if (e) {
+        const error = searchParams.get("error");
+        if (error) {
             setStatus("err");
-            setErr(e);
+            setErr(error);
         } else {
             setStatus("ok");
         }
-    }, []);
+    }, [searchParams]);
 
     const fetchLiked = async () => {
         try {
             const data = await getJSON<SavedTracksResponse>("/api/spotify/liked");
             const names = (data.items || []).slice(0, 5).map(
-                (it) => `${it.track.name} — ${it.track.artists.map(a => a.name).join(", ")}`
+                (it) => `${it.track.name} — ${it.track.artists.map((a) => a.name).join(", ")}`
             );
             setSample(names);
         } catch (e: any) {
@@ -60,7 +60,7 @@ export default function SpotifyLinked() {
                 <>
                     <h1>Spotify link failed ❌</h1>
                     <p style={{ color: "crimson" }}>{err}</p>
-                    <a href="/">Back</a>
+                    <Link to="/">Back</Link>
                 </>
             ) : null}
         </div>
