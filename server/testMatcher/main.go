@@ -20,11 +20,11 @@ func main() {
 	flag.Parse()
 
 	var svc = service.NewService(endpointURL, region)
-	events, err := svc.MatchEvents(time.Date(2025, 8, 31, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 9, 30, 0, 0, 0, 0, time.UTC),
+	events, err := svc.MatchEvents(service.MatchingRequest{service.Date{Time: time.Date(2025, 8, 31, 0, 0, 0, 0, time.UTC)},
+		service.Date{Time: time.Date(2025, 9, 30, 0, 0, 0, 0, time.UTC)},
 		"music",
 		"I want to go to a punk or indie concert preferably at a small venue",
-		[]string{"The Landsdowne Hotel", "Oxford art factory"})
+		[]string{"The Landsdowne Hotel", "Oxford art factory"}})
 
 	if err != nil {
 		log.Printf(err.Error())

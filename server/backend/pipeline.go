@@ -159,7 +159,7 @@ func NewSaver(dbLayer Db, logger zerolog.Logger) Saver {
 	}
 }
 
-func (obj *Saver) Save(event Event) (Event, error) {
+func (obj Saver) Save(event Event) (Event, error) {
 	err := obj.dbLayer.WriteEvent(event)
 	if err != nil {
 		return event, err
@@ -180,8 +180,9 @@ func NewPipeline(dbLayer Db, logger zerolog.Logger) Pipeline {
 		deduplicator: NewDeduplicator(dbLayer, logger),
 		saver:        NewSaver(dbLayer, logger),
 		scrapers: map[SourceType]Scraper{
-			Moshtix:      NewMoshtixScraper(logger),
-			MetroTheatre: NewMetroScraper(logger),
+			FactoryTheatre: NewFactoryTheatreScraper(logger),
+			Moshtix:        NewMoshtixScraper(logger),
+			MetroTheatre:   NewMetroScraper(logger),
 		},
 	}
 }
@@ -211,7 +212,8 @@ func (obj Pipeline) Process(event Event) (Event, error) {
 }
 
 func (obj Pipeline) Scrape() error {
-	obj.scrapers[MetroTheatre].Scrape(obj)
-	obj.scrapers[Moshtix].Scrape(obj)
+	obj.scrapers[FactoryTheatre].Scrape(obj)
+	//	obj.scrapers[MetroTheatre].Scrape(obj)
+	//	obj.scrapers[Moshtix].Scrape(obj)
 	return nil
 }

@@ -49,7 +49,7 @@ func readEnv(cfg *Config) {
 	}
 }
 
-func handleRequest(ctx context.Context, event json.RawMessage) ([]byte, error) {
+func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage, error) {
 	logger := log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 	var cfg Config
 	readFile(&cfg)
@@ -64,6 +64,7 @@ func handleRequest(ctx context.Context, event json.RawMessage) ([]byte, error) {
 		return nil, err
 	}
 
+	matchingRequest.EndDate = service.Date{Time: matchingRequest.StartDate.Add(3 * 24 * time.Hour)}
 	events, err := svc.MatchEvents(matchingRequest)
 
 	if err != nil {
@@ -72,7 +73,6 @@ func handleRequest(ctx context.Context, event json.RawMessage) ([]byte, error) {
 	}
 
 	data, _ := json.Marshal(events)
-
 	return data, nil
 }
 
@@ -82,10 +82,9 @@ func main() {
 		lambda.Start(handleRequest)
 	} else {
 		request := service.MatchingRequest{
-			StartDate:   time.Date(2025, 8, 31, 0, 0, 0, 0, time.UTC),
-			EndDate:     time.Date(2025, 9, 30, 0, 0, 0, 0, time.UTC),
+			StartDate:   service.Date{Time: time.Date(2025, 12, 7, 0, 0, 0, 0, time.UTC)},
 			Category:    "music",
-			Description: "I want to go to a punk or indie concert preferably at a small venue",
+			Description: "is there a gig of omar suleyman in sydney",
 			Venues:      []string{"The Landsdowne Hotel", "Oxford art factory"},
 		}
 		data, _ := json.Marshal(request)
@@ -97,8 +96,13 @@ func main() {
 			return
 		}
 
-		for _, r := range events {
-			log.Printf("%+v", r)
+		var recommendedEvents []service.RecommendedEvent
+		if err := json.Unmarshal(events, &recommendedEvents); err != nil {
+			log.Printf(err.Error())
+		} else {
+			for _, r := range recommendedEvents {
+				log.Printf("%+v", r)
+			}
 		}
 	}
 }

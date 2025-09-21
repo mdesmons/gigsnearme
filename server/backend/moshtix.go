@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
 	"github.com/rs/zerolog"
+	"jaytaylor.com/html2text"
 	"strconv"
 	"time"
 )
@@ -99,11 +100,14 @@ func NewMoshtixScraper(logger zerolog.Logger) MoshtixScraper {
 }
 
 func convertToDbEvent(item moshtixItem) Event {
+
+	description, _ := html2text.FromString(item.Description, html2text.Options{TextOnly: true})
+
 	var result = Event{EventID: uuid.NewString(),
 		Source_name: string(Moshtix),
 		SourceEvent: strconv.Itoa(item.Id),
 		Title:       item.Name,
-		Description: item.Description,
+		Description: description,
 		Start:       item.StartDate.UTC(),
 		End:         item.EndDate.UTC(),
 		VenueName:   item.Venue.Name,

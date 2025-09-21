@@ -91,10 +91,11 @@ type User struct {
 type SourceType string
 
 const (
-	Moshtix      SourceType = "moshtix"
-	MetroTheatre SourceType = "metrotheatre"
-	Eventbrite   SourceType = "eventbrite"
-	Humanitix    SourceType = "humanitix"
+	Moshtix        SourceType = "moshtix"
+	MetroTheatre   SourceType = "metrotheatre"
+	FactoryTheatre SourceType = "factorytheatre"
+	Eventbrite     SourceType = "eventbrite"
+	OurSecretSpot  SourceType = "oursecretspot"
 )
 
 type Source struct {
@@ -386,6 +387,68 @@ func (obj Db) QueryUserByUserID(userID string) (*User, error) {
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (obj Db) PurgeOldEvents(cutoff time.Time) error {
+	// Convert cutoff to string (assuming ISO8601 in DB, e.g. "2025-09-01")
+	cutoffStr := cutoff.Format("2006-01-02")
+	obj.logger.Info().Msgf("Purging events older than %s", cutoffStr)
+	// 1. Scan with filter
+	scanInput := &dynamodb.ScanInput{
+		TableName:        aws.String("Events"),
+		FilterExpression: aws.String("#startdate < :cutoff"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":cutoff": &types.AttributeValueMemberS{Value: cutoffStr},
+		},
+		ExpressionAttributeNames: map[string]string{"#startdate": "start"},
+	}
+
+	var toDelete []Event
+	paginator := dynamodb.NewScanPaginator(obj.dbClient, scanInput)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(obj.dbContext)
+		if err != nil {
+			obj.logger.Error().Msgf("scan failed: %s", err.Error())
+			return err
+		}
+		var events []Event
+		if err := attributevalue.UnmarshalListOfMaps(page.Items, &events); err != nil {
+			obj.logger.Error().Msgf("unmarshal failed: %s", err.Error())
+			return err
+		}
+		toDelete = append(toDelete, events...)
+	}
+
+	obj.logger.Info().Msgf("Found %d events to delete", len(toDelete))
+	// 2. Batch delete (max 25 per request)
+	for i := 0; i < len(toDelete); i += 25 {
+		obj.logger.Info().Msgf("Deleting batch %d", i)
+		end := i + 25
+		if end > len(toDelete) {
+			end = len(toDelete)
+		}
+		writeReqs := make([]types.WriteRequest, 0, end-i)
+		for _, e := range toDelete[i:end] {
+			writeReqs = append(writeReqs, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{
+					Key: map[string]types.AttributeValue{
+						"event_id": &types.AttributeValueMemberS{Value: e.EventID},
+					},
+				},
+			})
+		}
+		_, err := obj.dbClient.BatchWriteItem(obj.dbContext, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				"Events": writeReqs,
+			},
+		})
+		if err != nil {
+			obj.logger.Error().Msgf("batch delete failed: %s", err.Error())
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (obj Db) CreateEventsTable() error {

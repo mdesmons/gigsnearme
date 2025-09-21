@@ -4,8 +4,7 @@ const categories = ['music', 'culture', 'sex-positive', 'workshop', 'talk', 'oth
 
 function MatchingForm({ onSubmit }) {
   const [form, setForm] = useState({
-    start_date: '',
-    end_date: '',
+    start_date: '', 
     category: categories[0],
     description: '',
     venues: '',
@@ -20,7 +19,6 @@ function MatchingForm({ onSubmit }) {
     e.preventDefault();
     const request = {
       start_date: form.start_date,
-      end_date: form.end_date,
       category: form.category,
       description: form.description,
       venues: form.venues.split(',').map(v => v.trim()).filter(Boolean),
@@ -31,12 +29,8 @@ function MatchingForm({ onSubmit }) {
   return (
     <form onSubmit={handleSubmit}>
       <label>
-        Start Date
+        Date
         <input type="date" name="start_date" value={form.start_date} onChange={handleChange} />
-      </label>
-      <label>
-        End Date
-        <input type="date" name="end_date" value={form.end_date} onChange={handleChange} />
       </label>
       <label>
         Category
@@ -61,19 +55,19 @@ function MatchingForm({ onSubmit }) {
 
 function EventCard({ event }) {
   const [open, setOpen] = useState(false);
-  const image = event.images && event.images.length > 0 ? event.images[0] : null;
+  const image = event.Images && event.Images.length > 0 ? event.Images[0] : null;
 
   return (
     <div className="card">
-      {image && <img src={image} alt={event.title} />}
+      {image && <img src={image} alt={event.Title} />}
       <div className="card-content">
-        <h3 className="card-title">{event.title}</h3>
-        <p className="card-caption">{event.caption}</p>
-        <p className="card-venue">{event.venue_name}</p>
+        <h3 className="card-title">{event.Title}</h3>
+        <p className="card-caption">{event.Caption}</p>
+        <p className="card-venue">{event.Venue_name}</p>
         <button className="toggle" onClick={() => setOpen(!open)}>
           {open ? 'Hide' : 'Show'} description
         </button>
-        {open && <p>{event.description}</p>}
+        {open && <p>{event.Description}</p>}
       </div>
     </div>
   );
@@ -113,7 +107,7 @@ export default function App() {
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {events.map(event => (
-        <EventCard key={`${event.source_name}-${event.title}`} event={event} />
+        <EventCard key={`${event.Source_name}-${event.Title}`} event={event} />
       ))}
     </div>
   );

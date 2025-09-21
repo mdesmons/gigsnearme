@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/backend"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -9,13 +10,40 @@ import (
 	"time"
 )
 
+// Custom type wrapping time.Time
+type Date struct {
+	time.Time
+}
+
+// Implement UnmarshalJSON so it can parse "YYYY-MM-DD"
+func (d *Date) UnmarshalJSON(b []byte) error {
+	// Trim quotes
+	s := string(b)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+
+	// Parse using the right layout
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return err
+	}
+	d.Time = t
+	return nil
+}
+
+// Format back to "YYYY-MM-DD"
+func (d Date) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Format("2006-01-02"))
+}
+
 type MatchingRequest struct {
 	// Time range
-	StartDate   time.Time `json:"start_date"`
-	EndDate     time.Time `json:"end_date"`
-	Category    string    `json:"category"`
-	Description string    `json:"description"`
-	Venues      []string  `json:"venues"`
+	StartDate   Date     `json:"start_date"`
+	EndDate     Date     `json:"end_date"`
+	Category    string   `json:"category"`
+	Description string   `json:"description"`
+	Venues      []string `json:"venues"`
 }
 
 type RecommendedEvent struct {
@@ -130,7 +158,7 @@ func (s Service) MatchEvents(request MatchingRequest) ([]RecommendedEvent, error
 		request.Description,
 		request.Venues)
 
-	events, err := s.dbLayer.QueryEventsByCategoryAndDate(request.StartDate, request.EndDate, request.Category)
+	events, err := s.dbLayer.QueryEventsByCategoryAndDate(request.StartDate.Time, request.EndDate.Time, request.Category)
 
 	if err != nil {
 		s.logger.Error().Msg(err.Error())
@@ -150,6 +178,11 @@ func (s Service) MatchEvents(request MatchingRequest) ([]RecommendedEvent, error
 	}
 
 	return result, nil
+}
+
+func (obj Service) Purge() error {
+	obj.logger.Info().Msg("Purging old events")
+	return obj.dbLayer.PurgeOldEvents(time.Now())
 }
 
 func (s Service) CreateTables() error {
