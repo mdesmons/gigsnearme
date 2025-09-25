@@ -2,11 +2,11 @@ package auth
 
 import (
 	"errors"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 type Session struct {
@@ -14,6 +14,11 @@ type Session struct {
 }
 
 func NewSession(secret string) *Session { return &Session{secret: []byte(secret)} }
+
+// go.mod: add github.com/google/uuid v1.6.0 (or similar)
+
+// NewUserID generates an anonymous user id.
+func NewUserID() string { return uuid.NewString() }
 
 func (s *Session) Mint(userID string, ttl time.Duration) string {
 	now := time.Now()

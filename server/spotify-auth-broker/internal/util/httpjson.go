@@ -7,7 +7,7 @@ import (
 
 type M map[string]any
 
-func JSON(status int, body any) events.APIGatewayProxyResponse {
+func JSON(status int, body any) events.APIGatewayV2HTTPResponse {
 	var data []byte
 	if body == nil {
 		data = []byte{}
@@ -15,7 +15,7 @@ func JSON(status int, body any) events.APIGatewayProxyResponse {
 		b, _ := json.Marshal(body)
 		data = b
 	}
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: status,
 		Headers: map[string]string{
 			"Content-Type":              "application/json",

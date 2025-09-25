@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"spotify-auth-broker/internal/auth"
 	"spotify-auth-broker/internal/spotify"
 	"spotify-auth-broker/internal/store"
@@ -16,6 +18,7 @@ type Router struct {
 	store   *store.DDB
 	client  *spotify.Client
 	session *auth.Session
+	logger  zerolog.Logger
 }
 
 func NewRouter() *Router {
@@ -24,40 +27,64 @@ func NewRouter() *Router {
 		store:   s,
 		client:  spotify.NewClient(os.Getenv("SPOTIFY_CLIENT_ID"), os.Getenv("SPOTIFY_REDIRECT_URI")),
 		session: auth.NewSession(os.Getenv("APP_JWT_SECRET")),
+		logger:  log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339, NoColor: true}),
 	}
 }
 
-func (r *Router) Serve(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	path := req.Path
-	method := req.HTTPMethod
+func (r *Router) Serve(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	path := req.RawPath
+	method := req.RequestContext.HTTP.Method
+
+	r.logger.Info().Msgf("Router serving %s %s", path, method)
 
 	switch {
-	case method == "POST" && path == "/auth/spotify/start":
+	case method == "POST" && path == "/api/auth/spotify/start":
 		return r.startAuth(ctx, req)
-	case method == "GET" && path == "/auth/spotify/callback":
+	case method == "POST" && path == "/session/init":
+		return r.initSession(ctx, req)
+	case method == "GET" && path == "/api/auth/spotify/callback":
 		return r.callback(ctx, req)
-	case method == "POST" && path == "/auth/spotify/unlink":
+	case method == "POST" && path == "/api/auth/spotify/unlink":
 		return r.unlink(ctx, req)
-	case method == "GET" && path == "/spotify/liked":
+	case method == "GET" && path == "/api/spotify/liked":
 		return r.getLiked(ctx, req)
 	default:
 		return util.JSON(404, util.M{"error": "not found"}), nil
 	}
 }
 
+func (r *Router) initSession(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	// If already have a session, no-op
+	if _, ok := r.session.Require(req.Headers["Cookie"]); ok {
+		return util.JSON(204, nil), nil
+	}
+	// Mint anonymous session (UUID as userID).
+	uid := auth.NewUserID() // new helper below
+	h := util.NewCookieHeaders().
+		SetCookie("app_sess", r.session.Mint(uid, 60*time.Minute), 60*time.Minute).
+		H()
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: 204,
+		Headers:    h,
+	}, nil
+}
+
 // POST /auth/spotify/start
-func (r *Router) startAuth(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Require app session (replace this with Cognito if you use it)
-	_, ok := r.session.Require(req.Headers["Cookie"])
+func (r *Router) startAuth(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	userID, ok := r.session.Require(req.Headers["Cookie"])
+	var setSessHdr map[string]string
 	if !ok {
-		return util.JSON(401, util.M{"error": "unauthorized"}), nil
+		// Create anonymous session on the fly
+		userID = auth.NewUserID()
+		setSessHdr = util.NewCookieHeaders().
+			SetCookie("app_sess", r.session.Mint(userID, 60*time.Minute), 60*time.Minute).
+			H()
 	}
 
 	state := auth.RandomString(24)
 	verifier := auth.RandomString(64)
 	challenge := auth.CodeChallengeS256(verifier)
 
-	// Store temp cookies (10 min) — alternative: store in Dynamo with TTL
 	h := util.NewCookieHeaders().
 		SetCookie("sp_state", state, 10*time.Minute).
 		SetCookie("sp_cv", verifier, 10*time.Minute).
@@ -65,15 +92,15 @@ func (r *Router) startAuth(ctx context.Context, req events.APIGatewayProxyReques
 
 	authURL := r.client.AuthorizeURL(state, challenge, "user-library-read user-top-read")
 
-	// 302 Redirect to Spotify authorize
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: 302,
-		Headers:    util.MergeHeaders(h, map[string]string{"Location": authURL}),
+		Headers:    util.MergeHeaders(util.MergeHeaders(h, setSessHdr), map[string]string{"Location": authURL}),
 	}, nil
 }
 
 // GET /auth/spotify/callback
-func (r *Router) callback(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (r *Router) callback(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	r.logger.Info().Msgf("Spotify callback")
 	/*	q, _ := url.ParseQuery(req.QueryStringParameters.Encode())
 		code := q.Get("code")
 		state := q.Get("state")
@@ -121,14 +148,15 @@ func (r *Router) callback(ctx context.Context, req events.APIGatewayProxyRequest
 		SetCookie("app_sess", r.session.Mint(userID, 60*time.Minute), 60*time.Minute).
 		H()
 
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: 302,
 		Headers:    util.MergeHeaders(h, map[string]string{"Location": os.Getenv("SPA_SUCCESS_URL")}),
 	}, nil
 }
 
 // POST /auth/spotify/unlink
-func (r *Router) unlink(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (r *Router) unlink(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	r.logger.Info().Msgf("Unlinking Spotify")
 	userID, ok := r.session.Require(req.Headers["Cookie"])
 	if !ok {
 		return util.JSON(401, util.M{"error": "unauthorized"}), nil
@@ -140,7 +168,8 @@ func (r *Router) unlink(ctx context.Context, req events.APIGatewayProxyRequest) 
 }
 
 // GET /spotify/liked
-func (r *Router) getLiked(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (r *Router) getLiked(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	r.logger.Info().Msgf("Get user liked")
 	userID, ok := r.session.Require(req.Headers["Cookie"])
 	if !ok {
 		return util.JSON(401, util.M{"error": "unauthorized"}), nil
