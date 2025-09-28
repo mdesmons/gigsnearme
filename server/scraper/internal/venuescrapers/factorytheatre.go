@@ -1,6 +1,7 @@
-package backend
+package venuescrapers
 
 import (
+	"common"
 	"crypto/tls"
 	"errors"
 	"github.com/PuerkitoBio/goquery"
@@ -10,17 +11,17 @@ import (
 	"time"
 )
 
-type MetroScraper struct {
+type FactoryTheatreScraper struct {
 	logger zerolog.Logger
 }
 
-func NewMetroScraper(logger zerolog.Logger) MetroScraper {
-	return MetroScraper{
+func NewFactoryTheatreScraper(logger zerolog.Logger) FactoryTheatreScraper {
+	return FactoryTheatreScraper{
 		logger: logger,
 	}
 }
 
-func (obj MetroScraper) scrapeEvent(url string) (*Event, error) {
+func (obj FactoryTheatreScraper) scrapeEvent(url string) (*common.Event, error) {
 	obj.logger.Debug().Msgf("Scraping event at %s", url)
 	client := http.Client{
 		Transport: &http.Transport{
@@ -61,24 +62,24 @@ func (obj MetroScraper) scrapeEvent(url string) (*Event, error) {
 		startDate = time.Time{}
 	}
 
-	var result = Event{EventID: uuid.NewString(),
-		Source_name: string(MetroTheatre),
+	var result = common.Event{EventID: uuid.NewString(),
+		Source_name: string(common.FactoryTheatre),
 		SourceEvent: url,
-		Title:       name,            //h1 title
-		Description: description,     //<div class='post-content'>
-		Start:       startDate.UTC(), //<li class='session-date'>Friday, 31 October 2025 08:00 PM
-		End:         startDate.UTC(), // <li class='session-date'>Friday, 31 October 2025 08:00 PM
-		VenueName:   "Metro Theatre", // item.Venue.Name,
-		URL:         url,             // event URL
+		Title:       name,              //h1 title
+		Description: description,       //<div class='post-content'>
+		Start:       startDate.UTC(),   //<li class='session-date'>Friday, 31 October 2025 08:00 PM
+		End:         startDate.UTC(),   // <li class='session-date'>Friday, 31 October 2025 08:00 PM
+		VenueName:   "Factory Theatre", // item.Venue.Name,
+		URL:         url,               // event URL
 		FetchedAt:   time.Now(),
-		Geo: Geo{
-			Lat: -33.87557496143779,
-			Lng: 151.206671962522,
+		Geo: common.Geo{
+			Lat: -33.90574,
+			Lng: 151.16553,
 		},
-		Address: Address{
-			Line1:    "624 George St",
-			PostCode: "2000",
-			Locality: "Sydney",
+		Address: common.Address{
+			Line1:    "105 Victoria Road",
+			PostCode: "2204",
+			Locality: "Marrickville",
 			Region:   "NSW",
 			Country:  "Australia",
 		},
@@ -89,15 +90,15 @@ func (obj MetroScraper) scrapeEvent(url string) (*Event, error) {
 }
 
 // Scrape fetches the Metro Theatre upcoming events page and extracts event links
-func (obj MetroScraper) Scrape(pipeline Pipeline) error {
-	obj.logger.Debug().Msg("Starting Metro Theatre scrape")
+func (obj FactoryTheatreScraper) Scrape(pipeline Pipeline) error {
+	obj.logger.Debug().Msg("Starting Factory Theatre scrape")
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
 		},
 	}
 
-	resp, err := client.Get("https://www.metrotheatre.com.au/?s&key=upcoming")
+	resp, err := client.Get("https://www.factorytheatre.com.au/?s&key=upcoming")
 	if err != nil {
 		return err
 	}
@@ -124,10 +125,10 @@ func (obj MetroScraper) Scrape(pipeline Pipeline) error {
 		}
 	})
 
-	obj.logger.Debug().Msgf("Found %obj event links\n", len(links))
+	obj.logger.Debug().Msgf("Found %d event links\n", len(links))
 
 	for _, link := range links {
-		eventExists, err := pipeline.EventExists(string(MetroTheatre), link)
+		eventExists, err := pipeline.EventExists(string(common.MetroTheatre), link)
 		if err != nil {
 			obj.logger.Error().Msgf("Error checking if event exists %s: %s\n", link, err.Error())
 			continue
@@ -136,7 +137,7 @@ func (obj MetroScraper) Scrape(pipeline Pipeline) error {
 			obj.logger.Debug().Msgf("Event already exists, skipping: %s\n", link)
 			continue
 		}
-		
+
 		time.Sleep(1 * time.Second) // Be polite and avoid overwhelming the server
 		event, err := obj.scrapeEvent(link)
 		if err != nil {

@@ -1,6 +1,7 @@
-package backend
+package venuescrapers
 
 import (
+	"common"
 	"context"
 	"github.com/google/uuid"
 	"github.com/hasura/go-graphql-client"
@@ -99,12 +100,12 @@ func NewMoshtixScraper(logger zerolog.Logger) MoshtixScraper {
 	}
 }
 
-func convertToDbEvent(item moshtixItem) Event {
+func convertToDbEvent(item moshtixItem) common.Event {
 
 	description, _ := html2text.FromString(item.Description, html2text.Options{TextOnly: true})
 
-	var result = Event{EventID: uuid.NewString(),
-		Source_name: string(Moshtix),
+	var result = common.Event{EventID: uuid.NewString(),
+		Source_name: string(common.Moshtix),
 		SourceEvent: strconv.Itoa(item.Id),
 		Title:       item.Name,
 		Description: description,
@@ -127,7 +128,7 @@ func convertToDbEvent(item moshtixItem) Event {
 	result.ContentFlags.EighteenPlus = (item.AgeRestriction == "OVER18")
 
 	if item.Venue.Address != nil {
-		result.Address = Address{
+		result.Address = common.Address{
 			Line1:    item.Venue.Address.Line1,
 			Line2:    item.Venue.Address.Line2,
 			PostCode: item.Venue.Address.PostCode,
@@ -138,7 +139,7 @@ func convertToDbEvent(item moshtixItem) Event {
 	}
 
 	if item.Venue.Location != nil {
-		result.Geo = Geo{
+		result.Geo = common.Geo{
 			Lat: item.Venue.Location.Latitude,
 			Lng: item.Venue.Location.Longitude,
 		}

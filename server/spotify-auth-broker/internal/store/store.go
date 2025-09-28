@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"os"
 	"strconv"
@@ -33,11 +34,17 @@ func MustNew() *DDB {
 	if err != nil {
 		panic(err)
 	}
-	return &DDB{
+	dbHandler := DDB{
 		table: os.Getenv("DDB_TABLE"),
 		ddb:   dynamodb.NewFromConfig(cfg),
 		kms:   crypto.NewKMS(cfg, os.Getenv("KMS_KEY_ID")),
 	}
+
+	if os.Getenv("INIT_TABLE") == "1" {
+		dbHandler.initTable()
+	}
+	
+	return &dbHandler
 }
 
 func (s *DDB) UpsertRefreshToken(ctx context.Context, userID, refresh, scope string) error {
@@ -120,4 +127,74 @@ func getN(v ddbtypes.AttributeValue) int64 {
 		return i
 	}
 	return 0
+}
+
+func (s *DDB) initTable() {
+	ctx := context.Background()
+
+	// Create if not exists.
+	created, err := s.ensureTable(ctx)
+	must(err)
+	if created {
+		fmt.Printf("Created table %q\n", s.table)
+	} else {
+		fmt.Printf("Table %q already exists\n", s.table)
+	}
+}
+
+// ensureTable creates the table if it doesn't exist and waits until ACTIVE.
+func (s *DDB) ensureTable(ctx context.Context) (created bool, err error) {
+	// 1) Describe to see if it exists
+	_, err = s.ddb.DescribeTable(ctx, &dynamodb.DescribeTableInput{
+		TableName: aws.String(s.table),
+	})
+	if err == nil {
+		return false, nil // exists
+	}
+	var rnfe *ddbtypes.ResourceNotFoundException
+	if !errors.As(err, &rnfe) {
+		return false, fmt.Errorf("describe table failed: %w", err)
+	}
+
+	// 2) Create table: PK = user_id (S), on-demand billing
+	_, err = s.ddb.CreateTable(ctx, &dynamodb.CreateTableInput{
+		TableName: aws.String(s.table),
+		AttributeDefinitions: []ddbtypes.AttributeDefinition{
+			{AttributeName: aws.String("user_id"), AttributeType: ddbtypes.ScalarAttributeTypeS},
+		},
+		KeySchema: []ddbtypes.KeySchemaElement{
+			{AttributeName: aws.String("user_id"), KeyType: ddbtypes.KeyTypeHash},
+		},
+		BillingMode: ddbtypes.BillingModePayPerRequest,
+		// Server-side encryption: by default AWS-owned key is enabled.
+		// If you want a customer-managed KMS key for DDB at-rest, uncomment below and set SSESpecification.
+		// SSESpecification: &ddbtypes.SSESpecification{
+		// 	Enabled:        aws.Bool(true),
+		// 	SSEType:        ddbtypes.SSETypeKms,
+		// 	KMSMasterKeyId: aws.String("<your-kms-key-arn>"),
+		// },
+		// Tags are optional but helpful:
+		Tags: []ddbtypes.Tag{
+			{Key: aws.String("project"), Value: aws.String("gigsnearme")},
+			{Key: aws.String("purpose"), Value: aws.String("spotify-link-storage")},
+		},
+	})
+	if err != nil {
+		return false, fmt.Errorf("create table failed: %w", err)
+	}
+
+	// 3) Wait until ACTIVE
+	waiter := dynamodb.NewTableExistsWaiter(s.ddb)
+	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(s.table)}, 5*time.Minute); err != nil {
+		return true, fmt.Errorf("waiting for table ACTIVE failed: %w", err)
+	}
+
+	return true, nil
+}
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 }

@@ -1,4 +1,4 @@
-package backend
+package common
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/invopop/jsonschema"
 	"github.com/rs/zerolog"
 	"time"
 )
@@ -120,6 +121,18 @@ type Db struct {
 	dbContext context.Context
 	dbClient  *dynamodb.Client
 	logger    zerolog.Logger
+}
+
+func GenerateSchema[T any]() interface{} {
+	// Structured Outputs uses a subset of JSON schema
+	// These flags are necessary to comply with the subset
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
+	}
+	var v T
+	schema := reflector.Reflect(v)
+	return schema
 }
 
 func NewDb(endpointURL string, region string, logger zerolog.Logger) (Db, error) {

@@ -23,6 +23,58 @@ type Client struct {
 	http        *http.Client
 }
 
+// Put near your other types in internal/spotify/client.go
+
+// TimeRange represents Spotify's window for "top" endpoints.
+type TimeRange string
+
+const (
+	TimeRangeShort  TimeRange = "short_term"  // ~last 4 weeks
+	TimeRangeMedium TimeRange = "medium_term" // ~last 6 months
+	TimeRangeLong   TimeRange = "long_term"   // several years
+)
+
+// Minimal track/artist payloads (expand if you need more fields)
+type TopTracksResponse struct {
+	Items []struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		URI   string `json:"uri"`
+		Href  string `json:"href"`
+		Album struct {
+			ID     string `json:"id"`
+			Name   string `json:"name"`
+			Images []struct {
+				URL string `json:"url"`
+			} `json:"images"`
+		} `json:"album"`
+		Artists []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+			URI  string `json:"uri"`
+		} `json:"artists"`
+		// Popularity, duration_ms etc. available if you want them
+	} `json:"items"`
+	Total int    `json:"total"`
+	Next  string `json:"next"`
+}
+
+type TopArtistsResponse struct {
+	Items []struct {
+		ID     string   `json:"id"`
+		Name   string   `json:"name"`
+		URI    string   `json:"uri"`
+		Href   string   `json:"href"`
+		Genres []string `json:"genres"`
+		Images []struct {
+			URL string `json:"url"`
+		} `json:"images"`
+		// Popularity, followers, etc. available if needed
+	} `json:"items"`
+	Total int    `json:"total"`
+	Next  string `json:"next"`
+}
+
 func NewClient(clientID, redirectURI string) *Client {
 	return &Client{
 		clientID:    clientID,
@@ -148,6 +200,70 @@ func (c *Client) GetLikedTracks(ctx context.Context, access string, limit, offse
 		return nil, errors.New("spotify api error: " + strconv.Itoa(res.StatusCode) + " " + string(b))
 	}
 	var out SavedTracksResponse
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetTopTracks fetches the user's top tracks for the given time range.
+// limit: 1..50 (default 20). offset: 0+.
+func (c *Client) GetTopTracks(ctx context.Context, access string, tr TimeRange, limit, offset int) (*TopTracksResponse, error) {
+	if tr == "" {
+		tr = TimeRangeMedium
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	u := apiBase + "/me/top/tracks?time_range=" + string(tr) +
+		"&limit=" + strconv.Itoa(limit) +
+		"&offset=" + strconv.Itoa(offset)
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		b, _ := io.ReadAll(res.Body)
+		return nil, errors.New("spotify api error: " + strconv.Itoa(res.StatusCode) + " " + string(b))
+	}
+	var out TopTracksResponse
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetTopArtists fetches the user's top artists for the given time range.
+// limit: 1..50 (default 20). offset: 0+.
+func (c *Client) GetTopArtists(ctx context.Context, access string, tr TimeRange, limit, offset int) (*TopArtistsResponse, error) {
+	if tr == "" {
+		tr = TimeRangeMedium
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	u := apiBase + "/me/top/artists?time_range=" + string(tr) +
+		"&limit=" + strconv.Itoa(limit) +
+		"&offset=" + strconv.Itoa(offset)
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		b, _ := io.ReadAll(res.Body)
+		return nil, errors.New("spotify api error: " + strconv.Itoa(res.StatusCode) + " " + string(b))
+	}
+	var out TopArtistsResponse
 	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
 		return nil, err
 	}

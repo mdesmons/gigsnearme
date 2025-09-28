@@ -9,22 +9,22 @@ import (
 )
 
 type cookieHeaders struct {
-	cookies []string
+	Cookies []string
 }
 
-func NewCookieHeaders() *cookieHeaders { return &cookieHeaders{cookies: []string{}} }
+func NewCookieHeaders() *cookieHeaders { return &cookieHeaders{Cookies: []string{}} }
 
 func (c *cookieHeaders) SetCookie(name, value string, ttl time.Duration) *cookieHeaders {
-	c.cookies = append(c.cookies, auth.Cookie(name, value, int(ttl.Seconds())))
+	c.Cookies = append(c.Cookies, auth.Cookie(name, value, int(ttl.Seconds())))
 	return c
 }
 func (c *cookieHeaders) ClearCookie(name string) *cookieHeaders {
-	c.cookies = append(c.cookies, auth.Cookie(name, "", -1))
+	c.Cookies = append(c.Cookies, auth.Cookie(name, "", -1))
 	return c
 }
 func (c *cookieHeaders) H() map[string]string {
 	h := map[string]string{}
-	for i, ck := range c.cookies {
+	for i, ck := range c.Cookies {
 		if i == 0 {
 			h["Set-Cookie"] = ck
 		} else {
@@ -34,10 +34,9 @@ func (c *cookieHeaders) H() map[string]string {
 	return h
 }
 
-func ParseCookie(header string) map[string]string {
+func ParseCookie(header []string) map[string]string {
 	out := map[string]string{}
-	parts := strings.Split(header, ";")
-	for _, p := range parts {
+	for _, p := range header {
 		p = strings.TrimSpace(p)
 		if p == "" || !strings.Contains(p, "=") {
 			continue

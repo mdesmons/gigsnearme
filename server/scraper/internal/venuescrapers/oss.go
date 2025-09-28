@@ -1,6 +1,7 @@
-package backend
+package venuescrapers
 
 import (
+	"common"
 	"crypto/tls"
 	"errors"
 	"github.com/PuerkitoBio/goquery"
@@ -10,17 +11,17 @@ import (
 	"time"
 )
 
-type FactoryTheatreScraper struct {
+type OurSecretSpotScraper struct {
 	logger zerolog.Logger
 }
 
-func NewFactoryTheatreScraper(logger zerolog.Logger) FactoryTheatreScraper {
-	return FactoryTheatreScraper{
+func NewOurSecretSpotScraper(logger zerolog.Logger) OurSecretSpotScraper {
+	return OurSecretSpotScraper{
 		logger: logger,
 	}
 }
 
-func (obj FactoryTheatreScraper) scrapeEvent(url string) (*Event, error) {
+func (obj OurSecretSpotScraper) scrapeEvent(url string) (*common.Event, error) {
 	obj.logger.Debug().Msgf("Scraping event at %s", url)
 	client := http.Client{
 		Transport: &http.Transport{
@@ -45,11 +46,13 @@ func (obj FactoryTheatreScraper) scrapeEvent(url string) (*Event, error) {
 	}
 	name := sel.Text()
 
-	sel = doc.Find("div.post-content").First()
+	descriptionPanel := doc.Find("#tab-description").First()
 	if sel.Length() == 0 {
 		return nil, errors.New("no description found for event at " + url)
 	}
-	description := sel.Text()
+
+	descriptionTextLines := descriptionPanel.Find("p")
+	description := descriptionTextLines.Text()
 
 	sel = doc.Find("li.session-date").First()
 	if sel.Length() == 0 {
@@ -61,43 +64,44 @@ func (obj FactoryTheatreScraper) scrapeEvent(url string) (*Event, error) {
 		startDate = time.Time{}
 	}
 
-	var result = Event{EventID: uuid.NewString(),
-		Source_name: string(FactoryTheatre),
+	var result = common.Event{EventID: uuid.NewString(),
+		Source_name: string(common.OurSecretSpot),
 		SourceEvent: url,
 		Title:       name,              //h1 title
 		Description: description,       //<div class='post-content'>
 		Start:       startDate.UTC(),   //<li class='session-date'>Friday, 31 October 2025 08:00 PM
 		End:         startDate.UTC(),   // <li class='session-date'>Friday, 31 October 2025 08:00 PM
-		VenueName:   "Factory Theatre", // item.Venue.Name,
+		VenueName:   "Our Secret Spot", // item.Venue.Name,
 		URL:         url,               // event URL
 		FetchedAt:   time.Now(),
-		Geo: Geo{
-			Lat: -33.90574,
-			Lng: 151.16553,
+		Geo: common.Geo{
+			Lat: -33.87557496143779,
+			Lng: 151.206671962522,
 		},
-		Address: Address{
-			Line1:    "105 Victoria Road",
-			PostCode: "2204",
-			Locality: "Marrickville",
+		Address: common.Address{
+			Line1:    "624 George St",
+			PostCode: "2000",
+			Locality: "Sydney",
 			Region:   "NSW",
 			Country:  "Australia",
 		},
-		Tagged: false,
+		Tagged:       false,
+		ContentFlags: common.ContentFlags{EighteenPlus: true, SexPositive: true},
 	}
 
 	return &result, nil
 }
 
-// Scrape fetches the Metro Theatre upcoming events page and extracts event links
-func (obj FactoryTheatreScraper) Scrape(pipeline Pipeline) error {
-	obj.logger.Debug().Msg("Starting Factory Theatre scrape")
+// Scrape fetches the OurSecretSpot Theatre upcoming events page and extracts event links
+func (obj OurSecretSpotScraper) Scrape(pipeline Pipeline) error {
+	obj.logger.Debug().Msg("Starting OurSecretSpot Theatre scrape")
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
 		},
 	}
 
-	resp, err := client.Get("https://www.factorytheatre.com.au/?s&key=upcoming")
+	resp, err := client.Get("https://oursecretspot.com.au/events-annandale/")
 	if err != nil {
 		return err
 	}
@@ -109,8 +113,8 @@ func (obj FactoryTheatreScraper) Scrape(pipeline Pipeline) error {
 	}
 
 	var links []string
-	doc.Find(".evt-card").Each(func(i int, s *goquery.Selection) {
-		obj.logger.Debug().Msg("Found evt-card section")
+	doc.Find(".bb-link").Each(func(i int, s *goquery.Selection) {
+		obj.logger.Debug().Msg("Found bb-link section")
 		if s.Is("a") {
 
 			href, exists := s.Attr("href")
@@ -119,15 +123,15 @@ func (obj FactoryTheatreScraper) Scrape(pipeline Pipeline) error {
 				links = append(links, href)
 
 			} else {
-				obj.logger.Debug().Msg("No link found in evt-card")
+				obj.logger.Debug().Msg("No link found in bb-link")
 			}
 		}
 	})
 
-	obj.logger.Debug().Msgf("Found %d event links\n", len(links))
+	obj.logger.Debug().Msgf("Found %obj event links\n", len(links))
 
 	for _, link := range links {
-		eventExists, err := pipeline.EventExists(string(MetroTheatre), link)
+		eventExists, err := pipeline.EventExists(string(common.OurSecretSpot), link)
 		if err != nil {
 			obj.logger.Error().Msgf("Error checking if event exists %s: %s\n", link, err.Error())
 			continue

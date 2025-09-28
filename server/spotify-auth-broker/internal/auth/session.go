@@ -32,18 +32,18 @@ func (s *Session) Mint(userID string, ttl time.Duration) string {
 	return ss
 }
 
-func (s *Session) Require(cookieHeader string) (string, bool) {
+func (s *Session) Require(cookieHeader []string) (string, bool) {
 	userID, err := s.userFromCookie(cookieHeader)
 	return userID, err == nil && userID != ""
 }
 
-func (s *Session) userFromCookie(cookieHeader string) (string, error) {
-	if cookieHeader == "" {
+func (s *Session) userFromCookie(cookieHeader []string) (string, error) {
+	if len(cookieHeader) == 0 {
 		return "", errors.New("no cookies")
 	}
 	// Expect "app_sess=...; ..."
 	var token string
-	for _, p := range strings.Split(cookieHeader, ";") {
+	for _, p := range cookieHeader {
 		p = strings.TrimSpace(p)
 		if strings.HasPrefix(p, "app_sess=") {
 			token = strings.TrimPrefix(p, "app_sess=")

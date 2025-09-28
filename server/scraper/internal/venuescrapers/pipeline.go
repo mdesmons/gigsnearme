@@ -1,10 +1,10 @@
-package backend
+package venuescrapers
 
 import (
+	"common"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v2"
 	"github.com/rs/zerolog"
 )
@@ -14,18 +14,18 @@ type Scraper interface {
 }
 
 type Deduplicator struct {
-	dbLayer Db
+	dbLayer common.Db
 	logger  zerolog.Logger
 }
 
-func NewDeduplicator(dbLayer Db, logger zerolog.Logger) Deduplicator {
+func NewDeduplicator(dbLayer common.Db, logger zerolog.Logger) Deduplicator {
 	return Deduplicator{
 		dbLayer: dbLayer,
 		logger:  logger,
 	}
 }
 
-func (d *Deduplicator) Deduplicate(event Event) (Event, error) {
+func (d *Deduplicator) Deduplicate(event common.Event) (common.Event, error) {
 	// Check if an event with the same Source_name and SourceEvent already exists in the database
 	// If it exists, return an error
 	// If it doesn't exist, return the event as is
@@ -38,11 +38,11 @@ func (d *Deduplicator) Deduplicate(event Event) (Event, error) {
 }
 
 type Tagger struct {
-	dbLayer Db
+	dbLayer common.Db
 	logger  zerolog.Logger
 }
 
-func NewTagger(dbLayer Db, logger zerolog.Logger) Tagger {
+func NewTagger(dbLayer common.Db, logger zerolog.Logger) Tagger {
 	return Tagger{
 		dbLayer: dbLayer,
 		logger:  logger,
@@ -60,21 +60,9 @@ type BatchOut struct {
 	Results []PerEvent `json:"results"`
 }
 
-func GenerateSchema[T any]() interface{} {
-	// Structured Outputs uses a subset of JSON schema
-	// These flags are necessary to comply with the subset
-	reflector := jsonschema.Reflector{
-		AllowAdditionalProperties: false,
-		DoNotReference:            true,
-	}
-	var v T
-	schema := reflector.Reflect(v)
-	return schema
-}
+var batchOutSchema = common.GenerateSchema[BatchOut]()
 
-var batchOutSchema = GenerateSchema[BatchOut]()
-
-func (obj *Tagger) Tag(events []Event) error {
+func (obj *Tagger) Tag(events []common.Event) error {
 	eventDescriptions := make([]string, len(events))
 
 	for _, event := range events {
@@ -148,18 +136,18 @@ Input events (0-based indices):
 }
 
 type Saver struct {
-	dbLayer Db
+	dbLayer common.Db
 	logger  zerolog.Logger
 }
 
-func NewSaver(dbLayer Db, logger zerolog.Logger) Saver {
+func NewSaver(dbLayer common.Db, logger zerolog.Logger) Saver {
 	return Saver{
 		dbLayer: dbLayer,
 		logger:  logger,
 	}
 }
 
-func (obj Saver) Save(event Event) (Event, error) {
+func (obj Saver) Save(event common.Event) (common.Event, error) {
 	err := obj.dbLayer.WriteEvent(event)
 	if err != nil {
 		return event, err
@@ -170,19 +158,19 @@ func (obj Saver) Save(event Event) (Event, error) {
 type Pipeline struct {
 	deduplicator Deduplicator
 	saver        Saver
-	scrapers     map[SourceType]Scraper
+	scrapers     map[common.SourceType]Scraper
 	logger       zerolog.Logger
 }
 
-func NewPipeline(dbLayer Db, logger zerolog.Logger) Pipeline {
+func NewPipeline(dbLayer common.Db, logger zerolog.Logger) Pipeline {
 	return Pipeline{
 		logger:       logger,
 		deduplicator: NewDeduplicator(dbLayer, logger),
 		saver:        NewSaver(dbLayer, logger),
-		scrapers: map[SourceType]Scraper{
-			FactoryTheatre: NewFactoryTheatreScraper(logger),
-			Moshtix:        NewMoshtixScraper(logger),
-			MetroTheatre:   NewMetroScraper(logger),
+		scrapers: map[common.SourceType]Scraper{
+			common.FactoryTheatre: NewFactoryTheatreScraper(logger),
+			common.Moshtix:        NewMoshtixScraper(logger),
+			common.MetroTheatre:   NewMetroScraper(logger),
 		},
 	}
 }
@@ -195,7 +183,7 @@ func (obj Pipeline) EventExists(source, sourceEvent string) (bool, error) {
 	return len(events) > 0, nil
 }
 
-func (obj Pipeline) Process(event Event) (Event, error) {
+func (obj Pipeline) Process(event common.Event) (common.Event, error) {
 	event, err := obj.deduplicator.Deduplicate(event)
 	if err != nil {
 		obj.logger.Info().Msgf("Deduplication: %s", err.Error())
@@ -211,9 +199,6 @@ func (obj Pipeline) Process(event Event) (Event, error) {
 	return event, nil
 }
 
-func (obj Pipeline) Scrape() error {
-	obj.scrapers[FactoryTheatre].Scrape(obj)
-	//	obj.scrapers[MetroTheatre].Scrape(obj)
-	//	obj.scrapers[Moshtix].Scrape(obj)
-	return nil
+func (obj Pipeline) Scrape(sourceType common.SourceType) error {
+	return obj.scrapers[sourceType].Scrape(obj)
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bootstrap main.go
+GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bootstrap cmd/lambda/main.go
 zip bootstrap.zip bootstrap
 aws lambda update-function-code  --function-name gnm-scraper  --zip-file fileb://bootstrap.zip --profile default
 
